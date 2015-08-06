@@ -19,5 +19,5 @@ wait_on_run synth_1
 
 # run imp
 launch_runs impl_1 -to_step write_bitstream
-
+wait_on_run impl_1
 
