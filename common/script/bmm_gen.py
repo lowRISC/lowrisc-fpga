@@ -17,7 +17,8 @@ for i, line in enumerate(lines):
     ram_match = re.match(r"ram_reg_(\d+)", line)
     if ram_match:
         loc_match = re.match(r"LOC[\w\s]+RAMB(\d+)_X(\d+)Y(\d+)", lines[i+2])
-        rams.append((int(ram_match.group(1)), loc_match.group(2), loc_match.group(3)))
+	if loc_match:
+            rams.append((int(ram_match.group(1)), loc_match.group(2), loc_match.group(3)))
 
 # get the bit-width of each
 if int(sys.argv[3]) % len(rams) != 0:
