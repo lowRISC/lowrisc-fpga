@@ -5,3 +5,6 @@
 [submodule "nexys4"]
 	path = board/nexys4
 	url = https://github.com/lowRISC/lowrisc-nexys4.git
+[submodule "bootloader"]
+	path = bootloader
+	url = https://github.com/lowrisc/lowrisc-bbl.git
