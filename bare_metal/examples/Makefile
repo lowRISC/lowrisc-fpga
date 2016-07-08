@@ -74,7 +74,7 @@ $(addsuffix .riscv, $(TARGETS)): %.riscv:%.c $(HEADERS) $(DRIVER_OBJS) crt.o $(D
 	$(RISCV_LINK) $(RISCV_GCC_OPTS) -o $@ $< $(DRIVER_OBJS) crt.o $(RISCV_LINK_OPTS)
 
 $(addsuffix .hex, $(TARGETS)): %.hex:%.riscv
-	elf2hex 536870912 16 4096 $< > $@
+	elf2hex 1073741824 16 4096 $< > $@
 
 $(addsuffix .dump, $(TARGETS)): %.dump:%.riscv
 	$(RISCV_DUMP) $(RISCV_DUMP_OPTS) $< > $@
