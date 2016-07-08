@@ -8,7 +8,7 @@
 #define STM_TRACE(id, value) \
   { \
     asm volatile ("mv   a0,%0": :"r" ((uint64_t)value) : "a0");	\
-    asm volatile ("csrw 0x8f0, %0" :: "r"(id));	\
+    asm volatile ("csrw 0x8ff, %0" :: "r"(id));	\
   }
 
 static void trace_event0() {
