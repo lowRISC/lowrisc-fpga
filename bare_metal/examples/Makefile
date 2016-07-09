@@ -43,6 +43,7 @@ DRIVER_OBJS += \
 
 HEADERS += \
 	$(wildcard $(DRIVER_DIR)/*.h) \
+	$(GEN_DIR)/dev_map.h \
 
 junk += \
 	$(addsuffix .riscv, $(TARGETS)) \
