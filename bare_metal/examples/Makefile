@@ -13,8 +13,9 @@ endif
 #--------------------------------------------------------------------
 
 FPGA_DIR ?= $(TOP)/vsim
+BASE_DIR ?= .
 
-DRIVER_DIR = ../driver
+DRIVER_DIR = $(BASE_DIR)/../driver
 GEN_DIR = $(FPGA_DIR)/generated-src
 RISCV_PREFIX=riscv64-unknown-elf-
 RISCV_GCC = $(RISCV_PREFIX)gcc
@@ -32,54 +33,47 @@ default: all
 
 TARGETS = boot dram hello sdcard trace jump
 
-DRIVER_OBJS += \
-	$(DRIVER_DIR)/syscalls.o \
-	$(DRIVER_DIR)/spi.o \
-	$(DRIVER_DIR)/uart.o \
-	$(DRIVER_DIR)/memory.o \
-	$(DRIVER_DIR)/elf.o \
-	$(DRIVER_DIR)/diskio.o \
-	$(DRIVER_DIR)/ff.o \
+DRIVER_TARGETS = syscalls spi uart memory elf diskio ff
 
-HEADERS += \
-	$(wildcard $(DRIVER_DIR)/*.h) \
-
-junk += \
-	$(addsuffix .riscv, $(TARGETS)) \
-	$(addsuffix .hex, $(TARGETS)) \
-	$(addsuffix .dump, $(TARGETS)) \
-	$(DRIVER_OBJS) \
+HEADERS += $(wildcard $(DRIVER_DIR)/*.h) \
 
 #--------------------------------------------------------------------
 # Build Drivers
 #--------------------------------------------------------------------
 
-$(DRIVER_OBJS): %.o:%.c $(HEADERS)
+DRIVER_OBJS = $(addsuffix .o, $(DRIVER_TARGETS))
+
+$(DRIVER_OBJS): %.o:$(DRIVER_DIR)/%.c $(HEADERS)
 	$(RISCV_GCC) $(RISCV_GCC_OPTS) -c $< -o $@
 
 crt.o: $(DRIVER_DIR)/crt.S
 	$(RISCV_GCC) $(RISCV_GCC_OPTS) -c $< -o $@
 
-junk += crt.o
+junk += $(DRIVER_OBJS) crt.o
 
 #--------------------------------------------------------------------
 # Building Targets
 #--------------------------------------------------------------------
 
-all: $(addsuffix .hex, $(TARGETS))
+RISCV_FILES = $(addsuffix .riscv, $(TARGETS))
+HEX_FILES = $(addsuffix .hex, $(TARGETS))
+DUMP_FILES = $(addsuffix .dump, $(TARGETS))
 
-dump: $(addsuffix .dump, $(TARGETS))
+all: $(HEX_FILES)
 
-$(addsuffix .riscv, $(TARGETS)): %.riscv:%.c $(HEADERS) $(DRIVER_OBJS) crt.o $(DRIVER_DIR)/test.ld
+dump: $(DUMP_FILES)
+
+$(RISCV_FILES): %.riscv:$(BASE_DIR)/%.c $(HEADERS) $(DRIVER_OBJS) crt.o $(DRIVER_DIR)/test.ld
 	$(RISCV_LINK) $(RISCV_GCC_OPTS) -o $@ $< $(DRIVER_OBJS) crt.o $(RISCV_LINK_OPTS)
 
-$(addsuffix .hex, $(TARGETS)): %.hex:%.riscv
+$(HEX_FILES): %.hex:%.riscv
 	elf2hex 1073741824 16 4096 $< > $@
 
-$(addsuffix .dump, $(TARGETS)): %.dump:%.riscv
+$(DUMP_FILES): %.dump:%.riscv
 	$(RISCV_DUMP) $(RISCV_DUMP_OPTS) $< > $@
 
 .PHONY: all dump
+junk += $(RISCV_FILES) $(HEX_FILES) $(DUMP_FILES)
 
 #--------------------------------------------------------------------
 # clean up
