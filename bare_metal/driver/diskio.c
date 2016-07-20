@@ -85,7 +85,9 @@ uint8_t CardType;          /* Card type flags */
 static
 void power_on (void)
 {
+  uint32_t timeout = 100*1000;
   spi_init();
+  while(timeout--);
 }
 
 static
@@ -259,13 +261,17 @@ uint8_t send_cmd (     /* Returns R1 resp (bit7==1:Send failed) */
                        )
 {
   uint8_t n, res;
-
+  uint32_t timeout = 100*1000;
 
   if (cmd & 0x80) {   /* ACMD<n> is the command sequense of CMD55-CMD<n> */
     cmd &= 0x7F;
     res = send_cmd(CMD55, 0);
     if (res > 1) return res;
   }
+
+  // enforce a wait between CMD55 and CMD41
+  if(cmd == ACMD41 & 0x7F)
+    while(timeout--);
 
   /* Select the card and wait for ready except to stop multiple block read */
   if (cmd != CMD12) {
@@ -313,6 +319,7 @@ DSTATUS disk_initialize (
 {
   uint8_t n, cmd, ty, ocr[4];
   uint32_t timeout;
+  uint32_t acmd_delay = 100*1000;
 
 
   if (pdrv) return STA_NOINIT;        /* Supports only single drive */
@@ -327,7 +334,10 @@ DSTATUS disk_initialize (
     if (timeout-- && send_cmd(CMD8, 0x1AA) == 1) {   /* SDv2? */
       for (n = 0; n < 4; n++) ocr[n] = xchg_spi(0xFF);  /* Get trailing return value of R7 resp */
       if (ocr[2] == 0x01 && ocr[3] == 0xAA) {           /* The card can work at vdd range of 2.7-3.6V */
-        while (timeout-- && send_cmd(ACMD41, 1UL << 30)); /* Wait for leaving idle state (ACMD41 with HCS bit) */
+        while (timeout-- && send_cmd(ACMD41, 1UL << 30)) { /* Wait for leaving idle state (ACMD41 with HCS bit) */
+          while(acmd_delay--);
+          acmd_delay = 100*1000;
+        }
         if (timeout-- && send_cmd(CMD58, 0) == 0) {     /* Check CCS bit in the OCR */
           for (n = 0; n < 4; n++) ocr[n] = xchg_spi(0xFF);
           ty = (ocr[0] & 0x40) ? CT_SD2 | CT_BLOCK : CT_SD2; /* SDv2 */
