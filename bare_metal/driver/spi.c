@@ -9,6 +9,9 @@ volatile uint32_t *spi_base_ptr = (uint32_t *)(SPI_BASE);
 void spi_init() {
   uint32_t resp;
 
+  // power off SD
+  *(spi_base_ptr) = 0x1;
+
   // software reset?
   *(spi_base_ptr + SPI_SRR) = 0xa;
 
@@ -26,10 +29,16 @@ void spi_init() {
 
   // enable spi
   *(spi_base_ptr + SPI_CR) = 0x86;
+
+  // power on SD
+  *(spi_base_ptr) = 0x0;
 }
 
 
 void spi_disable() {
+  // power off SD
+  *(spi_base_ptr) = 0x1;
+
   *(spi_base_ptr + SPI_CR) = 0xE4;
 }
 
