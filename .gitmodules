@@ -8,3 +8,6 @@
 [submodule "bootloader"]
 	path = bootloader
 	url = https://github.com/lowrisc/lowrisc-bbl.git
+[submodule "board/nexys4_video"]
+	path = board/nexys4_video
+	url = https://github.com/lowRISC/lowrisc-nexys4-video.git
