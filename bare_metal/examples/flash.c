@@ -13,11 +13,15 @@ int main() {
   uint64_t rdata;
   uint64_t cnt = 0;
 
-  //uart_init();
-  //printf("FLASH test program.\n");
+  uart_init();
+  printf("\nFLASH test program.\n");
 
-  while(cnt++ < (FLASH_SIZE >> 3)) {
+  while(cnt < (FLASH_SIZE >> 3)) {
+    if(cnt % 4 == 0)
+      printf("\n%8x ", raddr);
     rdata = *(raddr++);
+    printf("%16x ", rdata);
+    cnt++;
   }
 }
 
