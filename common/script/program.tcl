@@ -28,3 +28,4 @@ if { $board == "" } {
 current_hw_device $device
 set_property PROGRAM.FILE $bit [current_hw_device]
 program_hw_devices [current_hw_device]
+disconnect_hw_server
