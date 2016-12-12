@@ -69,8 +69,12 @@ void tohost_exit(long code)
       code >>= 4;
     }
     uart_send_string(str);
-  }    
-  while (1);
+  }
+  while(1) {
+#ifdef DEV_MAP__io_ext_host__BASE
+    *(volatile uint64_t *)(DEV_MAP__io_ext_host__BASE) = (code<<1)|1;
+#endif
+  }
 }
 
 static char trap_rpt_buf [256];

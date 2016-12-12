@@ -49,7 +49,11 @@ uint8_t * store_test(uint64_t addr) {
 
 uint64_t load_test(uint64_t addr) {
   uint8_t *p = buf+addr;
-  if(load_tag(p) != ((addr>>3) & TAG_MASK)) return 1;
+  uint32_t tag = load_tag(p);
+  if(tag != ((addr>>3) & TAG_MASK)) {
+    printf("%llx %d != %d\n", (uint64_t)p, (addr>>3)&TAG_MASK, tag);
+      return 1;
+  }
   *p = 0;
   store_tag(p, 0);
   return 0;
@@ -66,9 +70,10 @@ int main( int argc, char* argv[] )
   uint64_t cnt =0;
   uint8_t buf_valid = 0;
 
-  buf = (uint8_t *)get_ddr_base() + get_ddr_size() - (uint64_t)0x20000000;
+  buf = (uint8_t *)get_ddr_base() + (uint64_t)0x20000000;
 
-  while(cnt++ < 10000) {
+  while(cnt++ < 50000) {
+    if((cnt & 0xff) == 0) printf("pass %d iterations...\n", cnt);
     p = tags[rp];
     addr = (uint64_t)(p) - (uint64_t)(buf);
 
