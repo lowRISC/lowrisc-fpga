@@ -70,7 +70,8 @@ void tohost_exit(long code)
     }
     uart_send_string(str);
   }    
-  while (1);
+  while (1)
+    asm("wfi");
 }
 
 static char trap_rpt_buf [256];

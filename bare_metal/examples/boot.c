@@ -8,7 +8,6 @@
 #include "uart.h"
 #include "elf.h"
 #include "memory.h"
-#include "spi.h"
 
 FATFS FatFs;   // Work area (file system object) for logical drive
 
@@ -72,8 +71,6 @@ int main (void)
     printf("fail to umount disk!");
     return 1;
   }
-
-  spi_disable();
 
   printf("Boot the loaded program...\n");
 

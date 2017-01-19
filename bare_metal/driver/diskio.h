@@ -65,7 +65,14 @@ extern "C" {
   /*---------------------------------------*/
   /* Prototypes for disk control functions */
 
-
+  uint8_t sd_send(uint8_t dat);
+  void sd_init(void);
+  void sd_disable(void) ;
+  void sd_deselect (void);
+  int sd_select (void);
+  int rcvr_datablock (uint8_t *buff,uint32_t btr);
+  int xmit_datablock (const uint8_t *buff, uint8_t token);
+  uint8_t send_cmd (uint8_t cmd, uint32_t arg, uint32_t flag);
   DSTATUS disk_initialize (uint8_t pdrv);
   DSTATUS disk_status (uint8_t pdrv);
   DRESULT disk_read (uint8_t pdrv, uint8_t* buff, uint32_t sector, uint32_t count);
@@ -121,6 +128,44 @@ extern "C" {
 #define CT_SDC      (CT_SD1|CT_SD2) /* SD */
 #define CT_BLOCK    0x08        /* Block addressing */
 
+/* Definitions for MMC/SDC command */
+#define CMD0    (0)         /* GO_IDLE_STATE */
+#define CMD1    (1)         /* SEND_OP_COND (MMC) */
+#define ACMD41  (0x80+41)   /* SEND_OP_COND (SDC) */
+#define CMD8    (8)         /* SEND_IF_COND */
+#define CMD9    (9)         /* SEND_CSD */
+#define CMD10   (10)        /* SEND_CID */
+#define CMD12   (12)        /* STOP_TRANSMISSION */
+#define ACMD13  (0x80+13)   /* SD_STATUS (SDC) */
+#define CMD16   (16)        /* SET_BLOCKLEN */
+#define CMD17   (17)        /* READ_SINGLE_BLOCK */
+#define CMD18   (18)        /* READ_MULTIPLE_BLOCK */
+#define CMD23   (23)        /* SET_BLOCK_COUNT (MMC) */
+#define ACMD23  (0x80+23)   /* SET_WR_BLK_ERASE_COUNT (SDC) */
+#define CMD24   (24)        /* WRITE_BLOCK */
+#define CMD25   (25)        /* WRITE_MULTIPLE_BLOCK */
+#define CMD32   (32)        /* ERASE_ER_BLK_START */
+#define CMD33   (33)        /* ERASE_ER_BLK_END */
+#define CMD38   (38)        /* ERASE */
+#define CMD55   (55)        /* APP_CMD */
+#define CMD58   (58)        /* READ_OCR */
+
+#define MMC_RSP_PRESENT (1 << 0)
+#define MMC_RSP_136     (1 << 1)                /* 136 bit response */
+#define MMC_RSP_CRC     (1 << 2)                /* expect valid crc */
+#define MMC_RSP_BUSY    (1 << 3)                /* card may send busy */
+#define MMC_RSP_OPCODE  (1 << 4)                /* response contains opcode */
+
+#define MMC_RSP_NONE    (0)
+#define MMC_RSP_R1      (MMC_RSP_PRESENT|MMC_RSP_CRC|MMC_RSP_OPCODE)
+#define MMC_RSP_R1b     (MMC_RSP_PRESENT|MMC_RSP_CRC|MMC_RSP_OPCODE| \
+                        MMC_RSP_BUSY)
+#define MMC_RSP_R2      (MMC_RSP_PRESENT|MMC_RSP_136|MMC_RSP_CRC)
+#define MMC_RSP_R3      (MMC_RSP_PRESENT)
+#define MMC_RSP_R4      (MMC_RSP_PRESENT)
+#define MMC_RSP_R5      (MMC_RSP_PRESENT|MMC_RSP_CRC|MMC_RSP_OPCODE)
+#define MMC_RSP_R6      (MMC_RSP_PRESENT|MMC_RSP_CRC|MMC_RSP_OPCODE)
+#define MMC_RSP_R7      (MMC_RSP_PRESENT|MMC_RSP_CRC|MMC_RSP_OPCODE)
 
 #ifdef __cplusplus
 }
