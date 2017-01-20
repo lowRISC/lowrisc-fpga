@@ -35,7 +35,7 @@ extern void mystatus (void);
 void spi_init(void);
 unsigned sd_transaction_v(int sdcmd, unsigned arg, unsigned setting);
 int sd_transaction(unsigned read, unsigned val, unsigned resp[], unsigned iobuf[], unsigned iobuflen);
-void mysleep(int delay);
+int mysleep(int delay);
 unsigned int sd_resp(int);
 unsigned int sd_stat(int);
 void sd_timeout(int d_timeout);
