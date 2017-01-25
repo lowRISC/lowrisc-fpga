@@ -31,7 +31,7 @@ RISCV_LINK_OPTS = -nostdlib -nostartfiles -ffast-math -lc -lgcc
 
 default: all
 
-TARGETS = boot dram hello sdcard trace jump flash
+TARGETS = boot dram hello sdcard trace jump flash selftest
 
 DRIVER_TARGETS = syscalls uart memory elf diskio ff minion_helper # mini-printf
 

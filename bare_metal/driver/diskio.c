@@ -79,41 +79,6 @@ void power_off (void)
 
   ---------------------------------------------------------------------------*/
 
-void sd_init_old(void)
-{
-  int i, rca, busy;
-  board_mmc_power_init();
-  sd_transaction_v(0,0x00000000,0x0);
-  sd_transaction_v(8,0x000001AA,0x1);
-  do {
-    sd_transaction_v(55,0x00000000,0x1);
-    busy = sd_transaction_v(41,0x40300000,0x1);
-  } while (0x80000000U & ~busy);
-  sd_transaction_v(2,0x00000000,0x3);
-  rca = sd_transaction_v(3,0x00000000,0x1);
-  myputchar('\r');
-  myputchar('\n');
-  myputchar('c');
-  myputhex(rca, 8);
-  sd_transaction_v(9,rca,0x3);
-  sd_transaction_v(13,rca,0x1);
-  sd_transaction_v(7,rca,0x1);
-  sd_transaction_v(55,rca,0x1);
-  sd_transaction_v(51,0x00000000,0x1);
-  sd_transaction_v(55,rca,0x1);
-  sd_transaction_v(13,0x00000000,0x1);
-  for (i = 0; i < 16; i=(i+1)|1)
-    {
-      sd_transaction_v(16,0x00000200,0x1);
-      sd_transaction_v(17,i,0x1);
-      sd_transaction_v(16,0x00000200,0x1);
-    }
-  sd_transaction_v(16,0x00000200,0x1);
-  sd_transaction_v(18,0x00000040,0x1);
-  sd_transaction_v(12,0x00000000,0x1);
-}
-
-
 /*-----------------------------------------------------------------------*/
 /* Initialize Disk Drive                                                 */
 /*-----------------------------------------------------------------------*/

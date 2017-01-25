@@ -5,7 +5,13 @@
 
 // MINION_LIB APIs
 extern int echo;
+void write_led(uint32_t data);
 void myputhex(unsigned n, unsigned width);
+uint32_t queue_read(volatile uint32_t * const sd_ptr);
+void queue_write(volatile uint32_t *const sd_ptr, uint32_t val, int flush);
+void sd_setting(int setting);
+void sd_cmd_start(int sd_cmd);
+
 extern int printf (const char *, ...);
 extern void uart_init (void);
 extern void uart_send (uint8_t);
@@ -281,7 +287,7 @@ void sd_align(int d_align);
 void sd_clk_div(int clk_div);
 void sd_cmd(unsigned cmd);
 void board_mmc_power_init(void);
-void init_sd(void);
+int init_sd(void);
 
 /*
  * Host SDMA buffer boundary. Valid values from 4K to 512K in powers of 2.

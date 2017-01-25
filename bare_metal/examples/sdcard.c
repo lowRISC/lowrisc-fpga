@@ -10,20 +10,6 @@
 
 FATFS FatFs;   /* Work area (file system object) for logical drive */
 
-void mygets(char *cmd)
-{
-  int ch;
-  char *chp = cmd;
-  do
-    {
-      ch = uart_recv();
-      uart_send(ch);
-      *chp++ = ch;
-    }
-  while (ch != '\n');
-  *--chp = 0;
-}
-
 void board_mmc_power_init(void);
 void minion_dispatch(const char *ucmd);
 
@@ -38,16 +24,8 @@ int main (void)
   STM_TRACE(0x1234, 0xdeadbeef);
 
   uart_init();
-#if 1
-  static char linbuf[80];
   board_mmc_power_init();
   
-  do {
-    uart_send_string("sdcard> ");
-    mygets(linbuf);
-    minion_dispatch(linbuf);
-  } while (*linbuf != 'q');
-#endif  
   /* Register work area to the default drive */
   if(f_mount(&FatFs, "", 1)) {
     printf("Fail to mount SD driver!\n");
