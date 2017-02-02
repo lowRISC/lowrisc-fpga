@@ -144,6 +144,7 @@ DRESULT disk_read (
   do {
     sd_read_sector(sector, buff, 512);
     buff += 512;
+    sector++;
   } while (--count);
   sd_deselect();
 

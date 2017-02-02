@@ -3,6 +3,29 @@
 #ifndef MINION_HEADER_H
 #define MINION_HEADER_H
 
+typedef __signed__ char __s8;
+typedef unsigned char __u8;
+typedef __signed__ short __s16;
+typedef unsigned short __u16;
+typedef __signed__ int __s32;
+typedef unsigned int __u32;
+typedef __signed__ long long __s64;
+typedef unsigned long long __u64;
+typedef __u16 __le16;
+typedef __u16 __be16;
+typedef __u32 __le32;
+typedef __u32 __be32;
+typedef __u32 le32;
+typedef __u16 le16;
+typedef __u64 u64;
+typedef __u32 u32;
+typedef __s32 s32;
+typedef __u16 le16;
+typedef __u16 u16;
+typedef __u8 u8;
+typedef __s8 s8;
+typedef int bool;
+
 // MINION_LIB APIs
 extern int echo;
 void write_led(uint32_t data);
@@ -52,7 +75,6 @@ unsigned int rx_read_fifo(void);
 void sd_transaction_start(int cmd_flags);
 void sd_transaction_wait(int mask);
 int sd_transaction_flush(int flush, unsigned resp[], unsigned iobuf[], unsigned iobuflen);
-void sd_transaction_finish(int mask);
 void queue_read_array(volatile unsigned int * const sd_ptr, unsigned cnt, unsigned iobuf[]);
 int sd_read_sector(int, void *, int);
 void open_handle(void);
@@ -287,7 +309,7 @@ void sd_align(int d_align);
 void sd_clk_div(int clk_div);
 void sd_cmd(unsigned cmd);
 void board_mmc_power_init(void);
-int init_sd(void);
+int init_sd(size_t addr, size_t addr2);
 
 /*
  * Host SDMA buffer boundary. Valid values from 4K to 512K in powers of 2.
@@ -316,3 +338,16 @@ struct minion_uart_ops {
 #define MINION_UART_CMD_DEFAULT_TIMEOUT		100
 #define MINION_UART_READ_STATUS_TIMEOUT		1000
 #endif
+
+#define get_card_status(_verbose) _get_card_status(__LINE__, _verbose)
+
+extern uint32_t card_status[32];
+extern int sd_read_sector1(int sect);
+extern void card_response(void);
+extern void _get_card_status(int line, int verbose);
+extern void sd_transaction_show(void);
+extern void sd_transaction_finish2(void);
+extern u8 *minion_iobuf(int sect);
+extern void show_sector(u8 *buf);
+extern void myhash(size_t addr);
+extern uint8_t *hash_buf(const void *in_buf, int count);
