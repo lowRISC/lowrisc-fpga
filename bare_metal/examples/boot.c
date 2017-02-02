@@ -20,6 +20,8 @@ FATFS FatFs;   // Work area (file system object) for logical drive
 // 4K size read burst
 #define SD_READ_SIZE 4096
 
+char md5buf[SD_READ_SIZE];
+
 int main (void)
 {
   FIL fil;                // File object
@@ -50,8 +52,11 @@ int main (void)
   uint32_t fsize = 0;           // file size count
   uint32_t br;                  // Read count
   do {
-    fr = f_read(&fil, buf, SD_READ_SIZE, &br);  // Read a chunk of source file
-    buf += br;
+    char *sum;
+    fr = f_read(&fil, md5buf, SD_READ_SIZE, &br);  // Read a chunk of source file
+    memcpy(boot_file_buf+fsize, md5buf, SD_READ_SIZE); 
+    sum = hash_buf(md5buf, SD_READ_SIZE);
+    printf("off=%x, md5=%s\n", fsize, sum);
     fsize += br;
   } while(!(fr || br == 0));
 

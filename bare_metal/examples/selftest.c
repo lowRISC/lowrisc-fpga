@@ -1,6 +1,7 @@
 // SD test program
 
 #include <stdio.h>
+#include <string.h>
 #include <stdlib.h>
 #include "elf.h"
 #include "diskio.h"
@@ -11,59 +12,174 @@
 #include "encoding.h"
 #include "bits.h"
 #include "minion_lib.h"
+#include "sdhci-minion-hash-md5.h"
+
+int strcmp (const char *s1, const char *s2)
+ {
+  /* No checks for NULL */
+  char *s1p = (char *)s1;
+  char *s2p = (char *)s2;
+
+  while (*s2p != '\0')
+    {
+      if (*s1p != *s2p)
+        break;
+
+      ++s1p;
+      ++s2p;
+    }
+  return (*s1p - *s2p);
+}
 
 /* Read a text file and display it */
 
-FATFS FatFs;   /* Work area (file system object) for logical drive */
+static int mounted = 0;
+FATFS MyFatFs;   /* Work area (file system object) for logical drive */
 
 void board_mmc_power_init(void);
 void minion_dispatch(const char *ucmd);
 
-int sdcard_test(void)
-{  
-  FIL fil;                /* File object */
-  FRESULT fr;             /* FatFs return code */
+int mount(int now)
+{
+  if (!mounted)
+    {
+      // Register work area to the default drive
+      if(f_mount(&MyFatFs, "", now)) {
+	printf("Fail to mount SD driver!\n");
+	return 1;
+      }
+    }
+  mounted = 1;
+  return 0;
+}
+
+int open(FIL *filp, const char *path)
+{
+  /* Open a text file */
+  FRESULT fr = f_open(filp, path, FA_READ);
+  if (fr) {
+    printf("failed to open %s!\n", path);
+  } else {
+    printf("%s opened\n", path);
+    fr = 0;
+  }
+  return (int)fr;
+}
+
+int opendir(DIR *dirp, const char *path)
+{
+  /* Open a directory */
+  FRESULT fr = f_opendir(dirp, path);
+  if (fr) {
+    printf("failed to open %s!\n", path);
+  } else {
+    printf("%s opened\n", path);
+    fr = 0;
+  }
+  return (int)fr;
+}
+
+void displaydir(DIR *dirp)
+{
   uint32_t br;            /* Read count */
-  uint32_t i;
   uint8_t buffer[64];     /* File copy buffer */
- /* Register work area to the default drive */
-  if(f_mount(&FatFs, "", 1)) {
-    printf("Fail to mount SD driver!\n");
+  /* Read all lines and display it */
+  uint32_t fsize = 0;
+  FILINFO fno;
+  FRESULT fr;
+  do {
+    memset(&fno, 0, sizeof(FILINFO));
+    fr = f_readdir(dirp, &fno);  /* Read a dir item */
+    printf("Number %d Name %s\n", dirp->index, dirp->fn);
+    fsize++;
+    }
+  while ((fsize < 16) && (fr==FR_OK));
+}
+
+int closedir(DIR *filp)
+{
+  /* Close the dir */
+  if(f_closedir(filp)) {
+    printf("fail to close dir");
     return 1;
   }
+  return 0;
+}
 
-  /* Open a text file */
-  fr = f_open(&fil, "test.txt", FA_READ);
-  if (fr) {
-    printf("failed to open test.txt!\n");
-    return (int)fr;
-  } else {
-    printf("test.txt opened\n");
-  }
-
+void display(FIL *filp)
+{
+  uint32_t br;            /* Read count */
+  uint8_t buffer[64];     /* File copy buffer */
   /* Read all lines and display it */
   uint32_t fsize = 0;
   for (;;) {
-    fr = f_read(&fil, buffer, sizeof(buffer)-1, &br);  /* Read a chunk of source file */
+    FRESULT fr = f_read(filp, buffer, sizeof(buffer)-1, &br);  /* Read a chunk of source file */
     if (fr || br == 0) break; /* error or eof */
     buffer[br] = 0;
     printf("%s", buffer);
     fsize += br;
   }
-
   printf("file size %d\n", fsize);
+}
 
+int close(FIL *filp)
+{
   /* Close the file */
-  if(f_close(&fil)) {
+  if(f_close(filp)) {
     printf("fail to close file!");
     return 1;
   }
-  if(f_mount(NULL, "", 1)) {         /* unmount it */
-    printf("fail to umount disk!");
-    return 1;
-  }
+  return 0;
+}
 
-  printf("test.txt closed.\n");
+int unmount(void)
+{
+  if (mounted)
+    {
+      if(f_mount(NULL, "", 1)) {         /* unmount it */
+	printf("fail to umount disk!");
+	return 1;
+      }
+    }
+  mounted = 0;
+}
+
+int sdcard_test(const char *nam)
+{  
+  uint32_t i;
+  FIL fil;                /* File object */
+  FRESULT fr;             /* FatFs return code */
+  
+  /* Register work area to the default drive */
+
+  if (mount(0)) return 1;
+
+  if (open(&fil, nam)) return 1;
+
+  display(&fil);
+
+  if (close(&fil)) return 1;
+
+  printf("%s closed.\n", nam);
+
+  return 0;
+}
+
+int show_dir(const char *nam)
+{  
+  DIR fil;                /* Dir object */
+  
+  /* Register work area to the default drive */
+
+  if (mount(0)) return 1;
+
+  if (opendir(&fil, nam)) return 1;
+
+  displaydir(&fil);
+
+  if (closedir(&fil)) return 1;
+
+  printf("%s closed.\n", nam);
 
   return 0;
 }
@@ -220,55 +336,90 @@ int trace_main() {
 // 4K size read burst
 #define SD_READ_SIZE 4096
 
-int boot (void)
+static uint8_t *boot_file_buf = (uint8_t *)((uint64_t *)(DEV_MAP__mem__BASE)) + DDR_SIZE - MAX_FILE_SIZE; // at the end of DDR space
+static uint8_t *memory_base = (uint8_t *)((uint64_t *)(DEV_MAP__mem__BASE));
+
+int prepare (const char *kernel)
 {
   FIL fil;                // File object
   FRESULT fr;             // FatFs return code
-  uint8_t *boot_file_buf = (uint8_t *)(get_ddr_base()) + DDR_SIZE - MAX_FILE_SIZE; // at the end of DDR space
-  uint8_t *memory_base = (uint8_t *)(get_ddr_base());
+  uint8_t buffer[64];     /* checksum buffer */
+  uint32_t br = 0;                  // Read count
 
   printf("lowRISC boot program\n=====================================\n");
 
-  // Register work area to the default drive
-  if(f_mount(&FatFs, "", 1)) {
-    printf("Fail to mount SD driver!\n");
-    return 1;
-  }
+  memset(buffer, 0, sizeof(buffer));
+  
+  /* Open a checksum file */
+  if (!open(&fil, "boot.md5"))
+    {
+      int i;
+      fr = f_read(&fil, buffer, sizeof(buffer)-1, &br);  /* Read a chunk of source file */
+      for (i = 0; i < br; i++)
+	{
+	  if (buffer[i] == ' ')
+	    buffer[i] = 0;
+	}
+
+      printf("Expected md5sum (from boot.md5) = %s\n", buffer);
+      
+      // Close the file
+      if(f_close(&fil)) {
+	printf("fail to close md5sum file!");
+	return 1;
+      }
+    }
 
   // Open a file
-  printf("Load boot.bin into memory\n");
-  fr = f_open(&fil, "boot.bin", FA_READ);
+  printf("Load %s into memory\n", kernel);
+  fr = f_open(&fil, kernel, FA_READ);
   if (fr) {
-    printf("Failed to open boot!\n");
+    printf("Failed to open %s\n", kernel);
     return (int)fr;
   }
 
   // Read file into memory
   uint8_t *buf = boot_file_buf;
   uint32_t fsize = 0;           // file size count
-  uint32_t br;                  // Read count
+  md5_ctx_t context;
+  char *hash_value;
   do {
-    fr = f_read(&fil, buf, SD_READ_SIZE, &br);  // Read a chunk of source file
-    buf += br;
-    fsize += br;
-  } while(!(fr || br == 0));
-
-  printf("Load %lld bytes to memory address %llx from boot.bin of %lld bytes.\n", fsize, boot_file_buf, fil.fsize);
-
-  // read elf
-  printf("load elf to DDR memory\n");
-  if(br = load_elf(boot_file_buf, fil.fsize))
-    printf("elf read failed with code %0d", br);
+    fr = f_read(&fil, boot_file_buf+fsize, SD_READ_SIZE, &br);  // Read a chunk of source file
+    if (!fr)
+      {
+	uart_send("|/-\\"[fsize&3]);
+	uart_send('\b');
+	fsize += br;
+      }
+  } while(!(fr || (br == 0)));
 
   // Close the file
   if(f_close(&fil)) {
-    printf("fail to close file!");
+    printf("fail to close %s!\n", kernel);
     return 1;
   }
-  if(f_mount(NULL, "", 1)) {         // unmount it
-    printf("fail to umount disk!");
-    return 1;
-  }
+
+  printf("Load %lld chunks bytes to memory address %llx from %s of %lld bytes.\n", fsize, boot_file_buf, kernel, fsize);
+
+  md5_begin(&context);
+  md5_hash(&context, boot_file_buf+fsize, br);
+  md5_end(&context);
+  hash_value = hash_bin_to_hex(&context);
+
+      if (strcmp(hash_value, buffer))
+	printf("Expected sum %s, actual %s\n", buffer, hash_value);
+
+  return fsize;
+}
+
+void boot(int fsize)
+{
+  uint32_t br = 0;                  // Read count
+
+  // read elf
+  printf("load elf to DDR memory\n");
+  if(br = load_elf(boot_file_buf, fsize))
+    printf("elf read failed with code %0d", br);
 
   printf("Boot the loaded program...\n");
 
@@ -296,41 +447,16 @@ void mygets(char *cmd)
   *--chp = 0;
 }
 
-uint32_t sd_transaction_v(int sdcmd, uint32_t arg, uint32_t setting)
+void old_init2(size_t addr, size_t addr2)
 {
-  int i, mask = setting > 7 ? 0x500 : 0x100;
-  uint32_t resp[10];
-  sd_arg(arg);
-  sd_setting(setting);
-  sd_cmd(sdcmd);
-  mysleep(10);
-  sd_cmd_start(1);
-  sd_transaction_wait(mask);
-  for (i = 10; i--; ) resp[i] = sd_resp(i);
-  sd_transaction_finish(mask);
-  myputhex(resp[7], 4);
-  myputchar(':');
-  myputhex(resp[6], 8);
-  myputchar('-');
-  myputchar('>');
-  for (i = 4; i--; )
-    {
-      myputhex(resp[i], 8);
-      myputchar(',');
-    }
-  myputhex(resp[5], 8);
-  myputchar(',');
-  myputhex(resp[4], 8);
-  myputchar('\n');
-  return resp[0] & 0xFFFF0000U;
-}
-
-void old_init2(void)
-{
-  uint32_t card_status[32];
   int i, rca, busy, timeout = 0;
-  size_t addr, addr2, data, sdcmd, arg, setting;
-  queue_read_array(sd_base, 32, card_status);
+  size_t data, sdcmd, arg, setting;
+  //  board_mmc_power_init();
+  sd_cmd_start(0);
+  sd_reset(0,1,1,1);
+  sd_blkcnt(1);
+  sd_blksize(0x200);
+  get_card_status(0);
   if (card_status[12])
     {
     myputs("card slot is empty\n");
@@ -354,15 +480,15 @@ void old_init2(void)
   sd_transaction_v(51,0x00000000,0x1);
   sd_transaction_v(55,rca,0x1);
   sd_transaction_v(13,0x00000000,0x1);
-  for (i = 0; i < 16; i=(i+1)|1)
-    {
-      sd_transaction_v(16,0x00000200,0x1);
-      sd_transaction_v(17,i,0x1);
-      sd_transaction_v(16,0x00000200,0x1);
-    }
   sd_transaction_v(16,0x00000200,0x1);
+  for (i = addr; i <= addr2; i++)
+    {
+      sd_transaction_v(17,i,0x15);
+    }
+#if 0
   sd_transaction_v(18,0x00000040,0x1);
   sd_transaction_v(12,0x00000000,0x1);
+#endif
 }
 
 const char *scan(const char *start, size_t *data, int base)
@@ -387,49 +513,24 @@ size_t mystrtol(const char *nptr, char **endptr, int base)
   return data;
 }
 
-void card_response()
+void show_sector(u8 *buf)
 {
-  int i, data;
-  uint32_t card_status[32];
-  queue_read_array(sd_base, 32, card_status);
-  for (i = 0; i < 32; i++)
+  int i;
+  for (i = 0; i < 512; i++)
     {
-      int empty = 0;
-      switch(i)
+      if ((i & 31) == 0)
 	{
-	case 0: myputs("sd_cmd_response[38:7]"); break;
-	case 1: myputs("sd_cmd_response[70:39]"); break;
-	case 2: myputs("sd_cmd_response[102:71]"); break;
-	case 3: myputs("sd_cmd_response[133:103]"); break;
-	case 4: myputs("sd_cmd_wait"); break;
-	case 5: myputs("sd_status"); break;
-	case 6: myputs("sd_cmd_packet[31:0]"); break;
-	case 7: myputs("sd_cmd_packet[47:32]"); break;
-	case 8: myputs("sd_data_wait"); break;
-	case 9: myputs("sd_transf_cnt"); break;
-	case 10: myputs("rx_fifo_status"); break;
-	case 11: myputs("tx_fifo_status"); break;
-	case 12: myputs("sd_detect"); break;
-	case 16: myputs("sd_align"); break;
-	case 17: myputs("clock_divider_sd_clk"); break;
-	case 18: myputs("sd_cmd_arg"); break;
-	case 19: myputs("sd_cmd_i"); break;
-	case 20: myputs("{sd_data_start,sd_cmd_setting[2:0]}"); break;
-	case 21: myputs("sd_cmd_start"); break;
-	case 22: myputs("{sd_reset,sd_clk_rst,sd_data_rst,sd_cmd_rst}"); break;
-	case 23: myputs("sd_blkcnt"); break;
-	case 24: myputs("sd_blksize"); break;
-	case 25: myputs("sd_cmd_timeout"); break;
-	default: empty = 1; break;
-	}
-      if (!empty)
-	{
-	  myputchar(':');
-	  data = card_status[i];
-	  myputhex(data, 8);
+	  myputchar('\r');
 	  myputchar('\n');
+	  myputhex(i, 4);
+	  myputchar(':');
+	  myputchar(' ');
 	}
+      myputhex(buf[i], 2);
+      myputchar(' ');
     }
+  myputchar('\r');
+  myputchar('\n');
 }
 
 void minion_dispatch(const char *ucmd)
@@ -442,10 +543,18 @@ void minion_dispatch(const char *ucmd)
       case 4:
 	break;
       case 'B':
-	boot();
+	boot(prepare("boot.bin"));
 	break;
       case 'c':
 	card_response();
+	break;
+      case 'C':
+	nxt = scan(ucmd+1, &data, 16);
+	myputchar('C');
+	myputchar(' ');
+	myputhex(data, 8);
+	myputchar('\n');
+	sd_clk_div(data);
 	break;
       case 'd':
 	printf("DEV_MAP__io_ext_bram__BASE = %x\n", DEV_MAP__io_ext_bram__BASE);
@@ -465,14 +574,52 @@ void minion_dispatch(const char *ucmd)
 	printf("DEV_MAP__io_int_bootrom__BASE = %x\n", DEV_MAP__io_int_bootrom__BASE);
 	printf("DEV_MAP__io_int_bootrom__MASK = %x\n", DEV_MAP__io_int_bootrom__MASK);
 	break;
+      case 'D':
+	show_dir(ucmd+1);
+	break;
       case 'f':
-	sdcard_test();
+	sdcard_test(ucmd+1);
 	break;
       case 'F':
 	flash_test();
 	break;
+      case 'h':
+	nxt = scan(ucmd+1, &addr, 16);
+	nxt = scan(nxt, &addr2, 16);
+	do
+	  {
+	    if (!addr2)
+	      {
+		u8 *buf = minion_iobuf(addr);
+		myputchar('h');
+		myputchar(' ');
+		myputhex(addr, 8);
+		myputchar(':');
+		show_sector(buf);
+	      }
+	    else myhash(addr);
+	    ++addr;
+	  }
+	while ((addr <= addr2) && addr2);
+	break;
+      case 'H':
+	addr = 0;
+	while (minion_cache_map(addr, 0)==1)
+	    myhash(addr++);
+	break;
       case 'i':
-	old_init2();
+	nxt = scan(ucmd+1, &addr, 16);
+	nxt = scan(nxt, &addr2, 16);
+	if (!addr2) addr2 = addr;
+	old_init2(addr, addr2);
+	break;
+      case 'I':
+	nxt = scan(ucmd+1, &addr, 16);
+	nxt = scan(nxt, &addr2, 16);
+	if (!addr2) addr2 = addr;
+	init_sd();
+	for (i = addr; i <= addr2; i++) sd_read_sector1(i);
+	mount(0);
 	break;
       case 'J':
 	just_jump();
@@ -484,8 +631,17 @@ void minion_dispatch(const char *ucmd)
 	myputhex(data, 2);
 	myputchar('\n');
 	write_led(data);
+      case 'm':
+	if (mounted)
+	  myputs("already mounted\n");
+	else
+	  mount(1);
+	break;
       case 'M':
 	memory_size();
+	break;
+      case 'P':
+	addr = prepare(ucmd+1);
 	break;
       case 'r':
 	nxt = scan(ucmd+1, &addr, 16);
@@ -539,6 +695,9 @@ void minion_dispatch(const char *ucmd)
       case 'T':
 	sdram_test();
 	break;
+      case 'u':
+	unmount();
+	break;
       case 'W':
 	nxt = scan(ucmd+1, &addr, 16);
 	myputchar('W');
@@ -562,6 +721,11 @@ int main (void)
   uart_init();
   board_mmc_power_init();  
   do {
+    if (queue_read((unsigned *)0x700000) & 1)
+      {
+	uart_send_string("Jumping to DRAM, SW0 is high ..\r\n");
+	just_jump();
+      }
     uart_send_string("selftest> ");
     mygets(linbuf);
     minion_dispatch(linbuf);

@@ -175,7 +175,7 @@ extern volatile uint32_t * const sd_base;
 
 void myputchar(char ch);
 void myputs(const char *str);
-void sdhci_write(struct bootstrap_host *host, uint32_t val, int reg);
+int sdhci_write(struct bootstrap_host *host, uint32_t val, int reg);
 uint32_t sdhci_read(struct bootstrap_host *host, int reg);
 void sdhci_reset(struct bootstrap_host *host, uint8_t mask);
 
@@ -503,7 +503,7 @@ void board_mmc_power_init(void)
 // try to avoid the area where the new kernel will be loaded
 u8 *minion_iobuf(int sect) { return (u8 *)(get_ddr_base()) +  0x1000000 + sect * 512; }
 
-int minion_cache_map(int sect) {
+int minion_cache_map(int sect, int clr) {
   u32 *map = (u32 *)(get_ddr_base()) + 0x800000;
   u32 shft = 1U << (sect&31);
   if (sect < 0)
@@ -515,7 +515,10 @@ int minion_cache_map(int sect) {
     }
   else if (sect >= 0x10000000) return -1;
   u32 cached = map[sect >> 5] & shft ? 1 : 0;
-  map[sect >> 5] |= shft;
+  if (clr)
+    map[sect >> 5] &= ~shft;
+  else
+    map[sect >> 5] |= shft;
   return cached;
  }
 
@@ -650,9 +653,9 @@ void card_response(void)
     }
 }
 
-void sd_transaction_finish(struct bootstrap_host *host, int cmd_flags)
+int sd_transaction_finish(struct bootstrap_host *host, int cmd_flags)
 {
-  int i, setting = 0;
+  int i, rslt, setting = 0;
   switch(sdhci_command & SDHCI_CMD_RESP_MASK)
       {
       case SDHCI_CMD_RESP_NONE: setting = 0; break;
@@ -683,16 +686,17 @@ void sd_transaction_finish(struct bootstrap_host *host, int cmd_flags)
   get_card_status(0);
   /* drain rx fifo, if needed */
   queue_block_read1();
-  sd_transaction_finish2();
-#if 1
+  rslt = sd_transaction_finish2();
+#ifdef SDHCI_VERBOSE3
   get_card_status(0);
   sd_transaction_show(); 
-#endif  
+#endif
+  return rslt;
 }
 
-void sd_transaction_finish2(void)
+int sd_transaction_finish2(void)
 {		   
-  uint32_t stat, wait;
+  uint32_t stat, wait, rslt = 0;
   sd_align(0);
   sd_cmd_start(1);
   get_card_status(1);
@@ -721,6 +725,7 @@ void sd_transaction_finish2(void)
       card_response();
       sd_cmd_start(0);
       sd_setting(0);
+      rslt = -1;
     }
 if (card_status[20] & 0x4)
     {
@@ -741,7 +746,8 @@ if (card_status[20] & 0x4)
 	    {
 		{
 		  int cnt = queue_block_read1();
-		  printf("transf_cnt = %d, fifo_cnt = %d\n", card_status[9], cnt);
+		  if (cnt != 129)
+		    printf("transf_cnt = %d, fifo_cnt = %d\n", card_status[9], cnt);
 		  minion_sdhci_read_block_pio(minion_iobuf(card_status[18]));
 		}
 	    }
@@ -750,6 +756,7 @@ if (card_status[20] & 0x4)
 	{
 	  printf("data timeout\n");
 	  card_response();
+	  rslt = -1;
         }
     }
 #ifdef SDHCI_VERBOSE3
@@ -760,6 +767,7 @@ if (card_status[20] & 0x4)
 #ifdef SDHCI_VERBOSE3
   printf("sd_transaction_finish ended\n");
 #endif
+  return rslt;
 }
 
 void sdhci_minion_hw_reset(struct bootstrap_host *host)
@@ -809,8 +817,9 @@ const char *sdhci_kind(int reg)
 }
 #endif  
 
-void sdhci_write(struct bootstrap_host *host, uint32_t val, int reg)
+int sdhci_write(struct bootstrap_host *host, uint32_t val, int reg)
 {
+  int rslt = 0;
 #ifdef SDHCI_VERBOSE2
   if (reg != SDHCI_HOST_CONTROL) printf("sdhci_write(&host, 0x%x, %s);\n", val, sdhci_kind(reg));
 #endif
@@ -868,7 +877,7 @@ void sdhci_write(struct bootstrap_host *host, uint32_t val, int reg)
       break;
     case SDHCI_COMMAND	        :
       sdhci_command = val;
-      sd_transaction_finish(host, sdhci_command);
+      rslt = sd_transaction_finish(host, sdhci_command);
       break;
     case SDHCI_BLOCK_GAP_CONTROL	: sdhci_block_gap = val; break;
     case SDHCI_WAKE_UP_CONTROL	: sdhci_wake_up = val; break;
@@ -923,8 +932,9 @@ void sdhci_write(struct bootstrap_host *host, uint32_t val, int reg)
     case SDHCI_HOST_CONTROL2    : bootstrap_host_control2 = val; break;
     case SDHCI_ACMD12_ERR       : sdhci_acmd12_err = val; break;
     case SDHCI_SLOT_INT_STATUS  : sdhci_slot_int_status = val; break;
-    default: printf("unknown(0x%x)", reg);
+    default: printf("unknown(0x%x)", reg); rslt = -1;
     }
+  return rslt;
 }
 
 uint32_t sdhci_read(struct bootstrap_host *host, int reg)
@@ -1012,6 +1022,7 @@ int i;
 
  int sd_read_sector1(int sect)
 {
+  int rslt = 0;
 sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
  sdhci_present_state = sdhci_read(&host, SDHCI_PRESENT_STATE);
 sdhci_write(&host, 0x00000200, SDHCI_ARGUMENT);
@@ -1027,15 +1038,18 @@ sdhci_write(&host, 0x00000200, SDHCI_BLOCK_SIZE);
 sdhci_write(&host, 0x00000001, SDHCI_BLOCK_COUNT);
 sdhci_write(&host, 0x00000012, SDHCI_TRANSFER_MODE);
 sdhci_write(&host, sect, SDHCI_ARGUMENT);
-sdhci_write(&host, 0x0000113A, SDHCI_COMMAND);
+rslt = sdhci_write(&host, 0x0000113A, SDHCI_COMMAND);
  sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
  sdhci_write(&host, 0x00000001, SDHCI_INT_STATUS);
  sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
  sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
+ return rslt;
 }
 
- int init_sd(size_t addr, size_t addr2)
+int init_sd(void)
 {
+  size_t addr = 0;
+  size_t addr2 = 1;
   int i, busy, rca, timeout = 0;
   get_card_status(0);
   if (card_status[12])
@@ -1242,20 +1256,52 @@ sdhci_write(&host, 0x0C350001, SDHCI_CLOCK_CONTROL);
 sdhci_write(&host, 0x0C350006, SDHCI_CLOCK_CONTROL);
  bootstrap_host_control = sdhci_read(&host, SDHCI_HOST_CONTROL);
 sdhci_write(&host, 0x00000002, SDHCI_HOST_CONTROL);
- minion_cache_map(-1);
- for (i = addr; i <= addr2; i++) sd_read_sector1(i);
+ minion_cache_map(-1, 0);
  return 0;
 }
 
 int sd_read_sector(int sect, void *buf, int max)
 {
-  switch (minion_cache_map(sect))
+  int rslt, i = 0;
+  switch (minion_cache_map(sect, 0))
     {
-    case 0: sd_read_sector1(sect); break;
-    case 1: myhash(sect); break;
+    case 0:
+      do {
+	rslt = sd_read_sector1(sect);
+      }
+      while (i++ < 3 && rslt);
+      if (rslt)
+	{
+	  /* clear this sector from cache */
+	  minion_cache_map(sect, 1);
+	  return rslt;
+	}
+      break;
+    case 1:
+#ifdef VERBOSE2
+      myhash(sect);
+#endif
+      break;
     default: printf("cache error\n"); return -1;
     }
   memcpy(buf, minion_iobuf(sect), max);
+#if VERBOSE2
   hash_buf(buf, max);
+#endif
+  return 0;
+}
+
+uint8_t send_cmd (uint8_t cmd, uint32_t arg, uint32_t flag)
+{
+  return -1;
+}
+
+int rcvr_datablock (uint8_t *buff,uint32_t btr)
+{
+  return 0;
+}
+
+int xmit_datablock (const uint8_t *buff, uint8_t token)
+{
   return 0;
 }

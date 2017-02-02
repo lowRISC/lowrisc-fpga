@@ -33,7 +33,7 @@ default: all
 
 TARGETS = boot dram hello sdcard trace jump flash selftest
 
-DRIVER_TARGETS = syscalls uart memory elf diskio ff minion_helper # mini-printf
+DRIVER_TARGETS = syscalls uart memory elf diskio ff minion_helper sdhci-minion-hash-md5
 
 HEADERS += $(wildcard $(DRIVER_DIR)/*.h) $(GEN_DIR)/dev_map.h
 

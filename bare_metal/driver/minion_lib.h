@@ -3,6 +3,8 @@
 #ifndef MINION_HEADER_H
 #define MINION_HEADER_H
 
+#include <stddef.h>
+
 typedef __signed__ char __s8;
 typedef unsigned char __u8;
 typedef __signed__ short __s16;
@@ -309,7 +311,7 @@ void sd_align(int d_align);
 void sd_clk_div(int clk_div);
 void sd_cmd(unsigned cmd);
 void board_mmc_power_init(void);
-int init_sd(size_t addr, size_t addr2);
+int init_sd(void);
 
 /*
  * Host SDMA buffer boundary. Valid values from 4K to 512K in powers of 2.
@@ -346,8 +348,11 @@ extern int sd_read_sector1(int sect);
 extern void card_response(void);
 extern void _get_card_status(int line, int verbose);
 extern void sd_transaction_show(void);
-extern void sd_transaction_finish2(void);
+extern int sd_transaction_finish2(void);
 extern u8 *minion_iobuf(int sect);
 extern void show_sector(u8 *buf);
 extern void myhash(size_t addr);
 extern uint8_t *hash_buf(const void *in_buf, int count);
+extern int minion_cache_map(int sect, int clr);
+extern int queue_block_read1(void);
+extern uint32_t queue_block_read2(int i);

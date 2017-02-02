@@ -239,7 +239,7 @@ DRESULT disk_ioctl (
     if (CardType & CT_SD2) {    /* SDv2? */
       if (send_cmd(ACMD13, 0, 0) == 0) { /* Read SD status */
         if (rcvr_datablock(csd, 16)) {              /* Read partial block */
-          queue_block_read((void*)0, 0);
+          queue_block_read1();
           *(uint32_t*)buff = 16UL << (csd[10] >> 4);
           res = RES_OK;
         }
