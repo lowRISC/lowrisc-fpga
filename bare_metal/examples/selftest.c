@@ -84,16 +84,16 @@ void displaydir(DIR *dirp)
   uint32_t br;            /* Read count */
   uint8_t buffer[64];     /* File copy buffer */
   /* Read all lines and display it */
-  uint32_t fsize = 0;
+  uint32_t idx;
   FILINFO fno;
   FRESULT fr;
   do {
+    idx = dirp->index;
     memset(&fno, 0, sizeof(FILINFO));
     fr = f_readdir(dirp, &fno);  /* Read a dir item */
-    printf("Number %d Name %s\n", dirp->index, dirp->fn);
-    fsize++;
+    printf("Number %d Name %s\n", dirp->index, fno.fname);
     }
-  while ((fsize < 16) && (fr==FR_OK));
+  while ((dirp->index != idx) && (fr==FR_OK));
 }
 
 int closedir(DIR *filp)
@@ -152,8 +152,11 @@ int sdcard_test(const char *nam)
   
   /* Register work area to the default drive */
 
-  if (mount(0)) return 1;
-
+  if (!mounted)
+    {
+      if (mount(1)) return 1;
+    }
+  
   if (open(&fil, nam)) return 1;
 
   display(&fil);
@@ -171,8 +174,11 @@ int show_dir(const char *nam)
   
   /* Register work area to the default drive */
 
-  if (mount(0)) return 1;
-
+  if (!mounted)
+    {
+      if (mount(1)) return 1;
+    }
+  
   if (opendir(&fil, nam)) return 1;
 
   displaydir(&fil);
@@ -349,6 +355,11 @@ int prepare (const char *kernel)
   printf("lowRISC boot program\n=====================================\n");
 
   memset(buffer, 0, sizeof(buffer));
+
+  if (!mounted)
+    {
+      if (mount(1)) return 1;
+    }
   
   /* Open a checksum file */
   if (!open(&fil, "boot.md5"))
@@ -387,7 +398,7 @@ int prepare (const char *kernel)
     fr = f_read(&fil, boot_file_buf+fsize, SD_READ_SIZE, &br);  // Read a chunk of source file
     if (!fr)
       {
-	uart_send("|/-\\"[fsize&3]);
+	uart_send("|/-\\"[(fsize/SD_READ_SIZE)&3]);
 	uart_send('\b');
 	fsize += br;
       }
@@ -402,13 +413,15 @@ int prepare (const char *kernel)
   printf("Load %lld chunks bytes to memory address %llx from %s of %lld bytes.\n", fsize, boot_file_buf, kernel, fsize);
 
   md5_begin(&context);
-  md5_hash(&context, boot_file_buf+fsize, br);
+  md5_hash(&context, boot_file_buf, fsize);
   md5_end(&context);
   hash_value = hash_bin_to_hex(&context);
 
-      if (strcmp(hash_value, buffer))
-	printf("Expected sum %s, actual %s\n", buffer, hash_value);
-
+  if (strcmp(hash_value, buffer))
+    printf("Expected sum %s, actual %s\n", buffer, hash_value);
+  else
+    printf("MD5 checksum %s OK\n", hash_value);
+  
   return fsize;
 }
 

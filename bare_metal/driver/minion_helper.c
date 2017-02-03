@@ -1274,6 +1274,7 @@ int sd_read_sector(int sect, void *buf, int max)
 	{
 	  /* clear this sector from cache */
 	  minion_cache_map(sect, 1);
+	  printf("More than 3 attempts failed on sector %d\n", sect);
 	  return rslt;
 	}
       break;
