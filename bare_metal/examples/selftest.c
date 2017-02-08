@@ -344,8 +344,9 @@ int trace_main() {
 
 static uint8_t *boot_file_buf = (uint8_t *)((uint64_t *)(DEV_MAP__mem__BASE)) + DDR_SIZE - MAX_FILE_SIZE; // at the end of DDR space
 static uint8_t *memory_base = (uint8_t *)((uint64_t *)(DEV_MAP__mem__BASE));
+static char kernel[32];
 
-int prepare (const char *kernel)
+int prepare (const char *cmdline)
 {
   FIL fil;                // File object
   FRESULT fr;             // FatFs return code
@@ -353,6 +354,9 @@ int prepare (const char *kernel)
   uint32_t br = 0;                  // Read count
 
   printf("lowRISC boot program\n=====================================\n");
+  if (cmdline[1])
+    strcpy(kernel, cmdline+1);
+  else strcpy(kernel, "boot.bin");
 
   memset(buffer, 0, sizeof(buffer));
 
@@ -556,7 +560,7 @@ void minion_dispatch(const char *ucmd)
       case 4:
 	break;
       case 'B':
-	boot(prepare("boot.bin"));
+	boot(prepare(ucmd+1));
 	break;
       case 'c':
 	card_response();
