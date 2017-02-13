@@ -740,8 +740,13 @@ int main (void)
   do {
     if (queue_read((unsigned *)0x700000) & 1)
       {
-	uart_send_string("Jumping to DRAM, SW0 is high ..\r\n");
+	uart_send_string("Jumping to DRAM because SW0 is high ..\r\n");
 	just_jump();
+      }
+    if (queue_read((unsigned *)0x700000) & 2)
+      {
+	uart_send_string("Booting from FLASH because SW1 is high ..\r\n");
+	boot(prepare(""));
       }
     uart_send_string("selftest> ");
     mygets(linbuf);
