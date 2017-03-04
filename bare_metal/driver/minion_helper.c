@@ -443,7 +443,7 @@ int queue_block_read1(void)
    return tmp.mode;
 }
 
-static int bootstrap_host_control;
+static int sdhci_host_control;
 static int sdhci_power_control;
 static int sdhci_block_gap;
 static int sdhci_wake_up;
@@ -459,14 +459,14 @@ static int sdhci_set_acmd12_error;
 static int sdhci_acmd12_err;
 static int sdhci_set_int;
 static int sdhci_slot_int_status;
-static int bootstrap_host_version;
+static int sdhci_host_version;
 static int sdhci_transfer_mode;
 static int sdhci_dma_address;
 static int sdhci_block_count;
 static int sdhci_block_size;
 static int sdhci_command;
 static int sdhci_argument;
-static int bootstrap_host_control2;
+static int sdhci_host_control2;
 
 uint32_t card_status[32];
 
@@ -520,7 +520,7 @@ int minion_cache_map(int sect, int clr) {
   else
     map[sect >> 5] |= shft;
   return cached;
- }
+}
 
 static void minion_sdhci_read_block_pio(u8 *buf)
 {
@@ -528,9 +528,11 @@ static void minion_sdhci_read_block_pio(u8 *buf)
 	size_t blksize, len, chunk;
 	u32 uninitialized_var(scratch);
 	int i = 0;
+#ifdef SDHCI_MD5
 	md5_ctx_t context;
+#endif
 #ifdef SDHCI_VERBOSE3
-	printf("PIO reading\n");
+	printf("Sector reading\n");
 #endif
 	blksize = 512;
 	chunk = 0;
@@ -582,7 +584,6 @@ static void minion_sdhci_write_block_pio(u8 *buf)
 	unsigned long flags;
 	size_t blksize, len, chunk;
 	u32 scratch;	
-	printf("PIO writing\n");
 
 	blksize = 512;
 	chunk = 0;
@@ -655,7 +656,7 @@ void card_response(void)
 
 int sd_transaction_finish(struct bootstrap_host *host, int cmd_flags)
 {
-  int i, rslt, setting = 0;
+  int rslt, setting = 0;
   switch(sdhci_command & SDHCI_CMD_RESP_MASK)
       {
       case SDHCI_CMD_RESP_NONE: setting = 0; break;
@@ -663,19 +664,13 @@ int sd_transaction_finish(struct bootstrap_host *host, int cmd_flags)
       case SDHCI_CMD_RESP_SHORT_BUSY: setting = 1; break;
       case SDHCI_CMD_RESP_LONG: setting = 3; break;
       }
-  if (bootstrap_host_control & SDHCI_CTRL_4BITBUS) setting |= 0x20;
+  if (sdhci_host_control & SDHCI_CTRL_4BITBUS) setting |= 0x20;
   if (sdhci_command & SDHCI_CMD_DATA)
       {
 	setting |= (sdhci_transfer_mode & SDHCI_TRNS_READ ? 0x10 : 0x8) | 0x4;
       }
-#ifdef EXTRA_RESET
-  for (i = 0; i < 10; i++)
-    queue_write(sd_base+i, 0, 0);
-  sd_reset(0,1,0,0);
   get_card_status(0);
-  sd_reset(0,1,1,1);
-#endif
-  get_card_status(0);
+  sd_align(0);
   sd_arg(sdhci_argument);
   sd_cmd(cmd_flags >> 8);
   sd_setting(setting);
@@ -683,6 +678,10 @@ int sd_transaction_finish(struct bootstrap_host *host, int cmd_flags)
   sd_reset(0,1,1,1);
   sd_blkcnt(sdhci_block_count);
   sd_blksize(sdhci_block_size&0xFFF);
+  sd_timeout(sdhci_timeout_control);
+#ifdef SDHCI_VERBOSE3
+  printf("Timeout control = %d\n", sdhci_timeout_control);
+#endif
   get_card_status(0);
   /* drain rx fifo, if needed */
   queue_block_read1();
@@ -695,18 +694,22 @@ int sd_transaction_finish(struct bootstrap_host *host, int cmd_flags)
 }
 
 int sd_transaction_finish2(void)
-{		   
-  uint32_t stat, wait, rslt = 0;
+{	
+  static int good, bad;	   
+  uint32_t timeout, stat, wait, timedout, rslt = 0;
+  int retry = 0;
+  do {
   sd_align(0);
   sd_cmd_start(1);
   get_card_status(1);
+  timeout = 0;
   do
     {
       get_card_status(0);
       stat = card_status[5];
       wait = stat & 0x100;
     }
-  while ((wait != 0x100) && (card_status[4] < card_status[25]));
+  while ((wait != 0x100) && (card_status[4] < card_status[25]) && (timeout++ < 1000000));
 #ifdef SDHCI_VERBOSE2
   {
   int i;
@@ -727,13 +730,13 @@ int sd_transaction_finish2(void)
       sd_setting(0);
       rslt = -1;
     }
-if (card_status[20] & 0x4)
+ if (card_status[20] & 0x4)
     {
       if ((card_status[20] & 0x4) && !(card_status[20] & 0x10))
 	    {
 	      minion_sdhci_write_block_pio(minion_iobuf(card_status[18]));
 	    }
-      do
+     do
          {
            get_card_status(0);
            stat = card_status[5];
@@ -754,10 +757,19 @@ if (card_status[20] & 0x4)
 	}
       else
 	{
-	  printf("data timeout\n");
-	  card_response();
-	  rslt = -1;
+		rslt = -1;
         }
+	}
+  } while ((rslt==-1) && ++retry < 3);
+  if (card_status[20] & 0x10)
+    {
+      if (rslt == -1)
+	{
+	  ++bad;
+	    printf("bad = %d/%d (%d%%)\n", bad, good, bad*100/good);
+	}
+      else
+	++good;
     }
 #ifdef SDHCI_VERBOSE3
   printf("sd_transaction_finish stopping\n");
@@ -836,16 +848,16 @@ int sdhci_write(struct bootstrap_host *host, uint32_t val, int reg)
       sdhci_block_size = val;
       break;
     case SDHCI_HOST_CONTROL	:
-      if ((val^bootstrap_host_control) & SDHCI_CTRL_4BITBUS)
+      if ((val^sdhci_host_control) & SDHCI_CTRL_4BITBUS)
 	{
 	  if (val & SDHCI_CTRL_4BITBUS)
 	    printf("4-bit bus enabled\n");
 	  else
 	    printf("4-bit bus disabled\n");
 	}
-      if (bootstrap_host_control != val)
-	write_led(bootstrap_host_control);
-      bootstrap_host_control = val;
+      if (sdhci_host_control != val)
+	write_led(sdhci_host_control);
+      sdhci_host_control = val;
       break;
     case SDHCI_ARGUMENT	        :
       sdhci_argument = val;
@@ -882,31 +894,35 @@ int sdhci_write(struct bootstrap_host *host, uint32_t val, int reg)
     case SDHCI_BLOCK_GAP_CONTROL	: sdhci_block_gap = val; break;
     case SDHCI_WAKE_UP_CONTROL	: sdhci_wake_up = val; break;
     case SDHCI_TIMEOUT_CONTROL	:
-      sdhci_timeout_control = val;
-      //      sd_timeout(sdhci_timeout_control);
+      sdhci_timeout_control = 1250000 / sdhci_clock_div;
+      if (sdhci_timeout_control < val) sdhci_timeout_control = val;
+#ifdef SDHCI_VERBOSE3
+      printf("Actual timeout control = %d\n", sdhci_timeout_control);
+#endif
       break;
     case SDHCI_SOFTWARE_RESET	:
       sdhci_software_reset = val;
-      sdhci_timeout_control = 1000; 
       sdhci_transfer_mode = 0;
       if (val & SDHCI_RESET_ALL) sdhci_minion_hw_reset(host);
       get_card_status(0);      
       break;
     case SDHCI_CLOCK_CONTROL	:
       sdhci_clock_div = val >> SDHCI_DIVIDER_SHIFT;
+      if (sdhci_clock_div)
+	{
+	  printf("Trying clock div = %d\n", sdhci_clock_div);
+	  if (sdhci_clock_div < 5) sdhci_clock_div = 5;
+	  if (sdhci_clock_div > 255) sdhci_clock_div = 255;
+	  printf("Actual clock divider = %d\n", sdhci_clock_div);
+	  sd_clk_div(sdhci_clock_div);
+	  sdhci_timeout_control = 1250000 / sdhci_clock_div;
+#ifdef SDHCI_VERBOSE3
+	  printf("Actual timeout control = %d\n", sdhci_timeout_control);
+#endif
+	  get_card_status(0);
+	}
       if (val & SDHCI_CLOCK_CARD_EN)
 	{
-	  switch(sdhci_clock_div)
-	    {
-	    case 100000:
-	      sd_clk_div(16);
-	      break;
-	    case 800000:
-	      sd_clk_div(0);
-	      break;
-	    default:
-	      printf("Ignoring clock div = %d\n", sdhci_clock_div);
-	    }
 	  sd_reset(0,1,1,1);
 	  printf("Card clock enabled\n");
 	  get_card_status(0);
@@ -928,8 +944,8 @@ int sdhci_write(struct bootstrap_host *host, uint32_t val, int reg)
     case SDHCI_BUFFER           : tx_write_fifo(val); break;
     case SDHCI_SET_ACMD12_ERROR	: sdhci_set_acmd12_error = val; break;
     case SDHCI_SET_INT_ERROR	: sdhci_set_int = val; break;
-    case SDHCI_HOST_VERSION	: bootstrap_host_version = val; break;
-    case SDHCI_HOST_CONTROL2    : bootstrap_host_control2 = val; break;
+    case SDHCI_HOST_VERSION	: sdhci_host_version = val; break;
+    case SDHCI_HOST_CONTROL2    : sdhci_host_control2 = val; break;
     case SDHCI_ACMD12_ERR       : sdhci_acmd12_err = val; break;
     case SDHCI_SLOT_INT_STATUS  : sdhci_slot_int_status = val; break;
     default: printf("unknown(0x%x)", reg); rslt = -1;
@@ -945,7 +961,7 @@ uint32_t sdhci_read(struct bootstrap_host *host, int reg)
     case SDHCI_DMA_ADDRESS       : rslt = sdhci_dma_address; break;
     case SDHCI_BLOCK_COUNT	 : rslt = sdhci_block_count; break;
     case SDHCI_BLOCK_SIZE	 : rslt = sdhci_block_size; break;
-    case SDHCI_HOST_CONTROL      : rslt = bootstrap_host_control; break;
+    case SDHCI_HOST_CONTROL      : rslt = sdhci_host_control; break;
     case SDHCI_ARGUMENT          : rslt = sdhci_argument; break;
     case SDHCI_TRANSFER_MODE	 : rslt = sdhci_transfer_mode; break;
     case SDHCI_COMMAND	         : rslt = sdhci_command; break;
@@ -958,8 +974,10 @@ uint32_t sdhci_read(struct bootstrap_host *host, int reg)
     case SDHCI_PRESENT_STATE	 : 
       sdhci_present_state = card_status[12] ? 0 : SDHCI_CARD_PRESENT;
       rslt = sdhci_present_state; break;
-    case SDHCI_HOST_VERSION	 : rslt = bootstrap_host_version; break;
-    case SDHCI_CAPABILITIES      : rslt = SDHCI_CAN_VDD_330|SDHCI_CLOCK_BASE_MASK; break;
+    case SDHCI_HOST_VERSION	 : rslt = SDHCI_SPEC_300; break;
+    case SDHCI_CAPABILITIES      :
+      rslt = SDHCI_CAN_VDD_330|(25 << SDHCI_CLOCK_BASE_SHIFT)|SDHCI_CAN_DO_HISPD;
+      break;
     case SDHCI_SOFTWARE_RESET    : rslt = 0; break;
     case SDHCI_BLOCK_GAP_CONTROL : rslt = sdhci_block_gap; break;
     case SDHCI_CLOCK_CONTROL     : rslt = (sdhci_clock_div << SDHCI_DIVIDER_SHIFT)|SDHCI_CLOCK_INT_STABLE; break;
@@ -970,7 +988,7 @@ uint32_t sdhci_read(struct bootstrap_host *host, int reg)
     case SDHCI_TIMEOUT_CONTROL	 : rslt = sdhci_timeout_control; break;
     case SDHCI_SIGNAL_ENABLE	 : rslt = sdhci_signal_enable; break;
     case SDHCI_SET_ACMD12_ERROR	 : rslt = sdhci_set_acmd12_error; break;
-    case SDHCI_HOST_CONTROL2     : rslt = bootstrap_host_control2; break;
+    case SDHCI_HOST_CONTROL2     : rslt = sdhci_host_control2; break;
     case SDHCI_ACMD12_ERR        : rslt = sdhci_acmd12_err; break;
     case SDHCI_CAPABILITIES_1    : rslt = MMC_CAP2_NO_SDIO; break;
     case SDHCI_SLOT_INT_STATUS   : rslt = SDHCI_INT_RESPONSE; break;
@@ -1023,6 +1041,9 @@ int i;
  int sd_read_sector1(int sect)
 {
   int rslt = 0;
+#ifdef SDHCI_VERBOSE3
+  printf("sd_read_sector1(%d)\n", sect);
+#endif
 sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
  sdhci_present_state = sdhci_read(&host, SDHCI_PRESENT_STATE);
 sdhci_write(&host, 0x00000200, SDHCI_ARGUMENT);
@@ -1048,6 +1069,8 @@ rslt = sdhci_write(&host, 0x0000113A, SDHCI_COMMAND);
 
 int init_sd(void)
 {
+  int div = 255 << SDHCI_DIVIDER_SHIFT;
+  int div2 = 12 << SDHCI_DIVIDER_SHIFT;
   size_t addr = 0;
   size_t addr2 = 1;
   int i, busy, rca, timeout = 0;
@@ -1069,9 +1092,9 @@ sdhci_write(&host, 0x00000000, SDHCI_HOST_CONTROL);
 int sdhci_present_state = sdhci_read(&host, SDHCI_PRESENT_STATE);
 int sdhci_clock_control = sdhci_read(&host, SDHCI_CLOCK_CONTROL);
 sdhci_write(&host, 0x00000002, SDHCI_CLOCK_CONTROL);
-sdhci_write(&host, 0x0186A001, SDHCI_CLOCK_CONTROL);
+sdhci_write(&host, div | 0x001, SDHCI_CLOCK_CONTROL);
  sdhci_clock_control = sdhci_read(&host, SDHCI_CLOCK_CONTROL);
-sdhci_write(&host, 0x0186A006, SDHCI_CLOCK_CONTROL);
+sdhci_write(&host, div | 0x006, SDHCI_CLOCK_CONTROL);
  bootstrap_host_control = sdhci_read(&host, SDHCI_HOST_CONTROL);
 sdhci_write(&host, 0x00000000, SDHCI_HOST_CONTROL);
 sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
@@ -1250,10 +1273,10 @@ sdhci_write(&host, 0x00000001, SDHCI_INT_STATUS);
 sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
  sdhci_present_state = sdhci_read(&host, SDHCI_PRESENT_STATE);
  sdhci_clock_control = sdhci_read(&host, SDHCI_CLOCK_CONTROL);
-sdhci_write(&host, 0x0186A002, SDHCI_CLOCK_CONTROL);
-sdhci_write(&host, 0x0C350001, SDHCI_CLOCK_CONTROL);
+sdhci_write(&host, div2 | 0x002, SDHCI_CLOCK_CONTROL);
+sdhci_write(&host, div2 | 0x001, SDHCI_CLOCK_CONTROL);
  sdhci_clock_control = sdhci_read(&host, SDHCI_CLOCK_CONTROL);
-sdhci_write(&host, 0x0C350006, SDHCI_CLOCK_CONTROL);
+sdhci_write(&host, div2 | 0x006, SDHCI_CLOCK_CONTROL);
  bootstrap_host_control = sdhci_read(&host, SDHCI_HOST_CONTROL);
 sdhci_write(&host, 0x00000002, SDHCI_HOST_CONTROL);
  minion_cache_map(-1, 0);
@@ -1274,6 +1297,7 @@ int sd_read_sector(int sect, void *buf, int max)
 	{
 	  /* clear this sector from cache */
 	  minion_cache_map(sect, 1);
+	  printf("More than 3 attempts failed on sector %d\n", sect);
 	  return rslt;
 	}
       break;

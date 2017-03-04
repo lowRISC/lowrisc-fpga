@@ -53,11 +53,13 @@ int main (void)
   uint32_t br;                  // Read count
   do {
     char *sum;
-    fr = f_read(&fil, md5buf, SD_READ_SIZE, &br);  // Read a chunk of source file
-    memcpy(boot_file_buf+fsize, md5buf, SD_READ_SIZE); 
-    sum = hash_buf(md5buf, SD_READ_SIZE);
-    printf("off=%x, md5=%s\n", fsize, sum);
-    fsize += br;
+    fr = f_read(&fil, boot_file_buf+fsize, SD_READ_SIZE, &br);  // Read a chunk of source file
+    if (!fr)
+      {
+	uart_send("|/-\\"[(fsize/SD_READ_SIZE)&3]);
+	uart_send('\b');
+	fsize += br;
+      }
   } while(!(fr || br == 0));
 
   printf("Load %lld bytes to memory address %llx from boot.bin of %lld bytes.\n", fsize, boot_file_buf, fil.fsize);
