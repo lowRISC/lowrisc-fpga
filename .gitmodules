@@ -11,6 +11,6 @@
 [submodule "board/nexys4_video"]
 	path = board/nexys4_video
 	url = https://github.com/lowRISC/lowrisc-nexys4-video.git
-[submodule "board/lowrisc-zed"]
-	path = board/lowrisc-zed
-	url = git@github.com:furkanturan/lowrisc-zed.git
+[submodule "board/zed"]
+	path = board/zed
+	url = https://github.com/furkanturan/lowrisc-zed.git
