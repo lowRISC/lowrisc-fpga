@@ -354,8 +354,8 @@ int prepare (const char *cmdline)
   uint32_t br = 0;                  // Read count
 
   printf("lowRISC boot program\n=====================================\n");
-  if (cmdline[1])
-    strcpy(kernel, cmdline+1);
+  if (*cmdline)
+    strcpy(kernel, cmdline);
   else strcpy(kernel, "boot.bin");
 
   memset(buffer, 0, sizeof(buffer));
@@ -560,7 +560,7 @@ void minion_dispatch(const char *ucmd)
       case 4:
 	break;
       case 'B':
-	boot(prepare(ucmd+1));
+	boot(prepare());
 	break;
       case 'c':
 	card_response();
@@ -658,7 +658,7 @@ void minion_dispatch(const char *ucmd)
 	memory_size();
 	break;
       case 'P':
-	addr = prepare(ucmd+1);
+	addr = prepare();
 	break;
       case 'r':
 	nxt = scan(ucmd+1, &addr, 16);
@@ -746,7 +746,7 @@ int main (void)
     if (queue_read((unsigned *)0x700000) & 2)
       {
 	uart_send_string("Booting from FLASH because SW1 is high ..\r\n");
-	boot(prepare(""));
+	boot(prepare());
       }
     uart_send_string("selftest> ");
     mygets(linbuf);

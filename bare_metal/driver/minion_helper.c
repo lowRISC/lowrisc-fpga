@@ -12,6 +12,7 @@
 #include "memory.h"
 #include "minion_lib.h"
 #include "sdhci-minion-hash-md5.h"
+#define printk printf
 
 #undef putchar
 void myputchar(char ch)
@@ -372,9 +373,6 @@ void sd_align(int d_align)
 
 void sd_clk_div(int clk_div)
 {
-  if (clk_div < 16) clk_div = 16;
-  if (clk_div > 255) clk_div = 255;
-  printf("Clock divider = %d\n", clk_div);
   queue_write(sd_base+1, clk_div, 1);
 }
 
@@ -390,7 +388,7 @@ void sd_cmd(uint32_t cmd)
 
 void sd_setting(int setting)
 {
-  queue_write(sd_base+4, setting, 1);
+  queue_write(sd_base+4, setting, 0);
 }
 
 void sd_cmd_start(int sd_cmd)
@@ -418,6 +416,7 @@ void sd_timeout(int d_timeout)
   queue_write(sd_base+9, d_timeout, 0);
 }
 
+#if 0
 uint32_t queue_block_read2(int i)
 {
   uint32_t rslt = __be32_to_cpu(((volatile uint32_t *)(shared_base+1))[i]);
@@ -442,6 +441,7 @@ int queue_block_read1(void)
 #endif
    return tmp.mode;
 }
+#endif
 
 static int sdhci_host_control;
 static int sdhci_power_control;
@@ -465,6 +465,7 @@ static int sdhci_dma_address;
 static int sdhci_block_count;
 static int sdhci_block_size;
 static int sdhci_command;
+static int sdhci_setting;
 static int sdhci_argument;
 static int sdhci_host_control2;
 
@@ -472,15 +473,17 @@ uint32_t card_status[32];
 
 void _get_card_status(int line, int verbose)
 {
-  int i;
   static uint32_t old_card_status[32];
   queue_read_array(sd_base, 32, card_status);
 #ifdef SDHCI_VERBOSE3
+  {
+  int i;
   for (i = 0; i < 26; i++) if (verbose || (card_status[i] != old_card_status[i]))
       {
 	printf("line(%d), card_status[%d]=%8x\n", line, i, card_status[i]);
 	old_card_status[i] = card_status[i];
       }
+  }
 #endif      
 }
 
@@ -522,12 +525,24 @@ int minion_cache_map(int sect, int clr) {
   return cached;
 }
 
+static void minion_sdhci_do_reset(struct bootstrap_host *host, u8 mask)
+{
+	host->ops->reset(host, mask);
+	//	host->mmc->caps2 |= MMC_CAP2_NO_SDIO;
+
+	if (mask & SDHCI_RESET_ALL) {
+		if (host->flags & (SDHCI_USE_SDMA | SDHCI_USE_ADMA)) {
+			if (host->ops->enable_dma)
+				host->ops->enable_dma(host);
+		}
+	}
+}
+
 static void minion_sdhci_read_block_pio(u8 *buf)
 {
 	unsigned long flags;
 	size_t blksize, len, chunk;
 	u32 uninitialized_var(scratch);
-	int i = 0;
 #ifdef SDHCI_MD5
 	md5_ctx_t context;
 #endif
@@ -548,7 +563,8 @@ static void minion_sdhci_read_block_pio(u8 *buf)
 	  
 	  while (len) {
 	    if (chunk == 0) {
-	      scratch = queue_block_read2(i++);
+	      rx_write_fifo(0);
+	      scratch = __be32_to_cpu(rx_read_fifo());
 	      chunk = 4;
 	    }
 	    
@@ -654,52 +670,31 @@ void card_response(void)
     }
 }
 
-int sd_transaction_finish(struct bootstrap_host *host, int cmd_flags)
+int sd_transaction_finish2(void)
 {
-  int rslt, setting = 0;
-  switch(sdhci_command & SDHCI_CMD_RESP_MASK)
-      {
-      case SDHCI_CMD_RESP_NONE: setting = 0; break;
-      case SDHCI_CMD_RESP_SHORT: setting = 1; break;
-      case SDHCI_CMD_RESP_SHORT_BUSY: setting = 1; break;
-      case SDHCI_CMD_RESP_LONG: setting = 3; break;
-      }
-  if (sdhci_host_control & SDHCI_CTRL_4BITBUS) setting |= 0x20;
-  if (sdhci_command & SDHCI_CMD_DATA)
-      {
-	setting |= (sdhci_transfer_mode & SDHCI_TRNS_READ ? 0x10 : 0x8) | 0x4;
-      }
-  get_card_status(0);
-  sd_align(0);
-  sd_arg(sdhci_argument);
-  sd_cmd(cmd_flags >> 8);
-  sd_setting(setting);
+  static int bad, good;
+  int timedout = 0;
+  int timeout, stat, wait, setting = 0;
+  int rslt = 0;
+  sd_reset(0,1,0,1);
   sd_cmd_start(0);
+  sd_align(0);
   sd_reset(0,1,1,1);
-  sd_blkcnt(sdhci_block_count);
-  sd_blksize(sdhci_block_size&0xFFF);
-  sd_timeout(sdhci_timeout_control);
 #ifdef SDHCI_VERBOSE3
   printf("Timeout control = %d\n", sdhci_timeout_control);
 #endif
   get_card_status(0);
   /* drain rx fifo, if needed */
-  queue_block_read1();
-  rslt = sd_transaction_finish2();
-#ifdef SDHCI_VERBOSE3
-  get_card_status(0);
-  sd_transaction_show(); 
-#endif
-  return rslt;
-}
-
-int sd_transaction_finish2(void)
-{	
-  static int good, bad;	   
-  uint32_t timeout, stat, wait, timedout, rslt = 0;
-  int retry = 0;
-  do {
-  sd_align(0);
+  while (1 & ~sd_resp(5))
+    {
+    rx_write_fifo(0);
+    }
+  //  queue_block_read1(&dummy, 0);
+  /* pre-fill tx fifo, in case response is faster than we can keep up */
+  if (card_status[20] & 0x8)
+    {	
+  minion_sdhci_write_block_pio(minion_iobuf(card_status[18]));
+    }
   sd_cmd_start(1);
   get_card_status(1);
   timeout = 0;
@@ -709,7 +704,7 @@ int sd_transaction_finish2(void)
       stat = card_status[5];
       wait = stat & 0x100;
     }
-  while ((wait != 0x100) && (card_status[4] < card_status[25]) && (timeout++ < 1000000));
+  while ((wait != 0x100) && (card_status[4] < card_status[25]) && (timeout++ < 10000));
 #ifdef SDHCI_VERBOSE2
   {
   int i;
@@ -722,64 +717,97 @@ int sd_transaction_finish2(void)
   }
 #endif
   queue_read_array(sd_base, 32, card_status);
-  if (card_status[4] >= card_status[25])
+  if (card_status[20] & 4)
     {
-      printf("cmd timeout\n");
-      card_response();
-      sd_cmd_start(0);
-      sd_setting(0);
-      rslt = -1;
-    }
- if (card_status[20] & 0x4)
-    {
-      if ((card_status[20] & 0x4) && !(card_status[20] & 0x10))
-	    {
-	      minion_sdhci_write_block_pio(minion_iobuf(card_status[18]));
-	    }
      do
          {
            get_card_status(0);
            stat = card_status[5];
            wait = stat & 0x400;
          }
-      while ((wait != 0x400) && (card_status[8] < card_status[25]));
-      if ((card_status[8] < card_status[25]) && card_status[9])
+      while ((wait != 0x400) && (card_status[8] < card_status[25]) && (card_status[5] & 0x800));
+      if (wait & 0x400)
 	{
 	  if (card_status[20] & 0x10)
 	    {
+#ifdef VERBOSE5
+	      printk("sd_transf_cnt = %d\n", card_status[9]);
+#endif	      
+	      if (card_status[9])
 		{
-		  int cnt = queue_block_read1();
-		  if (cnt != 129)
-		    printf("transf_cnt = %d, fifo_cnt = %d\n", card_status[9], cnt);
+		  int ok;
 		  minion_sdhci_read_block_pio(minion_iobuf(card_status[18]));
+		  ok = (card_status[15] & 15) == 15;
+#if 1
+		  if ((setting & 0x20) && !ok) rslt = -EILSEQ;
+#endif		  
+#ifdef VERBOSE5
+		  printk("Read @%X completed, status = %s, card CRC=%.4X,%.4X,%.4X,%.4X - expect CRC=%.4X,%.4X,%.4X,%.4X\n",
+			 card_status[18], ok ? "OK" : "ERR",
+			 card_status[27] >> 16, card_status[27] & 0xFFFF,
+			 card_status[26] >> 16, card_status[26] & 0xFFFF,
+			 card_status[29] >> 16, card_status[29] & 0xFFFF,
+			 card_status[28] >> 16, card_status[28] & 0xFFFF);
+#endif		  
 		}
+	      else timedout = 1;
 	    }
+	  else
+	    {
+	      int ok;
+#if 1
+	      if ((setting & 0x20) && !ok) rslt = -EILSEQ;
+#endif
+#ifdef VERBOSE5
+	      printk("Write %X completed, status = %x - expect CRC=%.4X,%.4X,%.4X,%.4X\n",
+		     card_status[18], (card_status[15] >> 4),
+		     card_status[29] >> 16, card_status[29] & 0xFFFF,
+		     card_status[28] >> 16, card_status[28] & 0xFFFF);
+#endif
+	    }
+	  get_card_status(0);
+#ifdef VERBOSE5
+	  card_response(timedout /* || (card_status[20] & 8) */ );
+#endif
 	}
       else
 	{
-		rslt = -1;
+	  timedout = 1;
         }
 	}
-  } while ((rslt==-1) && ++retry < 3);
-  if (card_status[20] & 0x10)
+  if (card_status[4] >= card_status[25])
     {
-      if (rslt == -1)
+    rslt = -ETIMEDOUT;
+    }
+  if (sdhci_command & SDHCI_CMD_DATA)
+    {
+      if (timedout)
 	{
 	  ++bad;
-	    printf("bad = %d/%d (%d%%)\n", bad, good, bad*100/good);
+	    rslt = -ETIMEDOUT;
+	    printk("bad = %d/%d (%d%%)\n", bad, good, bad*100/(bad+good));
 	}
       else
+	{
 	++good;
     }
+    }
 #ifdef SDHCI_VERBOSE3
-  printf("sd_transaction_finish stopping\n");
+  printk("sd_transaction_finish stopping\n");
+#endif
+#ifdef SDHCI_CAPTURE
+  get_capture_status2();
 #endif
   sd_cmd_start(0);
   sd_setting(0);
+  get_card_status(0);
+  if ((sdhci_command>>8) == 13)
+    {
+      printk("Status = %x\n", card_status[0]);
+    }
 #ifdef SDHCI_VERBOSE3
   printf("sd_transaction_finish ended\n");
 #endif
-  return rslt;
 }
 
 void sdhci_minion_hw_reset(struct bootstrap_host *host)
@@ -831,7 +859,7 @@ const char *sdhci_kind(int reg)
 
 int sdhci_write(struct bootstrap_host *host, uint32_t val, int reg)
 {
-  int rslt = 0;
+  int timeout, rslt = 0;
 #ifdef SDHCI_VERBOSE2
   if (reg != SDHCI_HOST_CONTROL) printf("sdhci_write(&host, 0x%x, %s);\n", val, sdhci_kind(reg));
 #endif
@@ -889,7 +917,28 @@ int sdhci_write(struct bootstrap_host *host, uint32_t val, int reg)
       break;
     case SDHCI_COMMAND	        :
       sdhci_command = val;
-      rslt = sd_transaction_finish(host, sdhci_command);
+      switch(sdhci_command & SDHCI_CMD_RESP_MASK)
+	  {
+	  case SDHCI_CMD_RESP_NONE: sdhci_setting = 0; break;
+	  case SDHCI_CMD_RESP_SHORT: sdhci_setting = 1; break;
+	  case SDHCI_CMD_RESP_SHORT_BUSY: sdhci_setting = 1; break;
+	  case SDHCI_CMD_RESP_LONG: sdhci_setting = 3; break;
+	  }
+      if (sdhci_host_control & SDHCI_CTRL_4BITBUS) sdhci_setting |= 0x20;
+      if (sdhci_command & SDHCI_CMD_DATA)
+	  {
+	    timeout = sdhci_timeout_control;
+	    sdhci_setting |= (sdhci_transfer_mode & SDHCI_TRNS_READ ? 0x10 : 0x8) | 0x4;
+	  }
+      else
+	timeout = 15;
+      sd_setting(sdhci_setting);
+      sd_arg(sdhci_argument);
+      sd_cmd(sdhci_command >> 8);
+      sd_blkcnt(sdhci_block_count);
+      sd_blksize(sdhci_block_size&0xFFF);
+      sd_timeout(timeout);
+      rslt = sd_transaction_finish2();
       break;
     case SDHCI_BLOCK_GAP_CONTROL	: sdhci_block_gap = val; break;
     case SDHCI_WAKE_UP_CONTROL	: sdhci_wake_up = val; break;
