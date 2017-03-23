@@ -3,8 +3,6 @@
 #ifndef RISCV_CSR_ENCODING_H
 #define RISCV_CSR_ENCODING_H
 
-#include "dev_map.h"
-
 #define MSTATUS_UIE         0x00000001
 #define MSTATUS_SIE         0x00000002
 #define MSTATUS_HIE         0x00000004
@@ -20,6 +18,7 @@
 #define MSTATUS_XS          0x00018000
 #define MSTATUS_MPRV        0x00020000
 #define MSTATUS_PUM         0x00040000
+#define MSTATUS_MXR         0x00080000
 #define MSTATUS_VM          0x1F000000
 #define MSTATUS32_SD        0x80000000
 #define MSTATUS64_SD        0x8000000000000000
@@ -69,47 +68,54 @@
 #define IRQ_COP      12
 #define IRQ_HOST     13
 
-#define CONFIG_STRING_ADDR (DEV_MAP__io_int_bootrom__BASE + 0x0000000C)
-#define DRAM_BASE          DEV_MAP__mem__BASE
+#define CONFIG_STRING_ADDR 0x0000000C
+#define HOST_BASE          0x00004000
+
+// tagged memory configuration
+#define TAG_BITS                4
+#define TAG_INST_BITS           2
+
+#define TMASK_ALU_CHECK         (0x000000000000000f)
+#define TMASK_ALU_PROP          (0x00000000000000f0)
+#define TMASK_LOAD_CHECK        (0x0000000000000f00)
+#define TMASK_LOAD_PROP         (0x000000000000f000)
+#define TMASK_STORE_CHECK       (0x00000000000f0000)
+#define TMASK_STORE_PROP        (0x0000000000f00000)
+#define TMASK_STORE_KEEP        (0x000000000f000000)
+#define TMASK_CFLOW_DIR_TGT     (0x0000000030000000)
+#define TMASK_CFLOW_INDIR_TGT   (0x00000000c0000000)
+#define TMASK_JMP_CHECK         (0x0000000f00000000)
+#define TMASK_JMP_PROP          (0x000000f000000000)
+#define TMASK_FETCH_CHECK       (0x0000030000000000)
+
+#define TSHIM_ALU_CHECK         0
+#define TSHIM_ALU_PROP          4
+#define TSHIM_LOAD_CHECK        8
+#define TSHIM_LOAD_PROP         12
+#define TSHIM_STORE_CHECK       16
+#define TSHIM_STORE_PROP        20
+#define TSHIM_STORE_KEEP        24
+#define TSHIM_CFLOW_DIR_TGT     28
+#define TSHIM_CFLOW_INDIR_TGT   30
+#define TSHIM_JMP_CHECK         32
+#define TSHIM_JMP_PROP          36
+#define TSHIM_FETCH_CHECK       40
+
 
 // page table entry (PTE) fields
 #define PTE_V     0x001 // Valid
-#define PTE_TYPE  0x01E // Type
-#define PTE_R     0x020 // Referenced
-#define PTE_D     0x040 // Dirty
-#define PTE_SOFT  0x380 // Reserved for Software
-
-#define PTE_TYPE_TABLE        0x00
-#define PTE_TYPE_TABLE_GLOBAL 0x02
-#define PTE_TYPE_URX_SR       0x04
-#define PTE_TYPE_URWX_SRW     0x06
-#define PTE_TYPE_UR_SR        0x08
-#define PTE_TYPE_URW_SRW      0x0A
-#define PTE_TYPE_URX_SRX      0x0C
-#define PTE_TYPE_URWX_SRWX    0x0E
-#define PTE_TYPE_SR           0x10
-#define PTE_TYPE_SRW          0x12
-#define PTE_TYPE_SRX          0x14
-#define PTE_TYPE_SRWX         0x16
-#define PTE_TYPE_SR_GLOBAL    0x18
-#define PTE_TYPE_SRW_GLOBAL   0x1A
-#define PTE_TYPE_SRX_GLOBAL   0x1C
-#define PTE_TYPE_SRWX_GLOBAL  0x1E
+#define PTE_R     0x002 // Read
+#define PTE_W     0x004 // Write
+#define PTE_X     0x008 // Execute
+#define PTE_U     0x010 // User
+#define PTE_G     0x020 // Global
+#define PTE_A     0x040 // Accessed
+#define PTE_D     0x080 // Dirty
+#define PTE_SOFT  0x300 // Reserved for Software
 
 #define PTE_PPN_SHIFT 10
 
-#define PTE_TABLE(PTE) ((0x0000000AU >> ((PTE) & 0x1F)) & 1)
-#define PTE_UR(PTE)    ((0x0000AAA0U >> ((PTE) & 0x1F)) & 1)
-#define PTE_UW(PTE)    ((0x00008880U >> ((PTE) & 0x1F)) & 1)
-#define PTE_UX(PTE)    ((0x0000A0A0U >> ((PTE) & 0x1F)) & 1)
-#define PTE_SR(PTE)    ((0xAAAAAAA0U >> ((PTE) & 0x1F)) & 1)
-#define PTE_SW(PTE)    ((0x88888880U >> ((PTE) & 0x1F)) & 1)
-#define PTE_SX(PTE)    ((0xA0A0A000U >> ((PTE) & 0x1F)) & 1)
-
-#define PTE_CHECK_PERM(PTE, SUPERVISOR, STORE, FETCH) \
-  ((STORE) ? ((SUPERVISOR) ? PTE_SW(PTE) : PTE_UW(PTE)) : \
-   (FETCH) ? ((SUPERVISOR) ? PTE_SX(PTE) : PTE_UX(PTE)) : \
-             ((SUPERVISOR) ? PTE_SR(PTE) : PTE_UR(PTE)))
+#define PTE_TABLE(PTE) (((PTE) & (PTE_V | PTE_R | PTE_W | PTE_X)) == PTE_V)
 
 #ifdef __riscv
 
@@ -159,6 +165,12 @@
   else \
     asm volatile ("csrrc %0, " #reg ", %1" : "=r"(__tmp) : "r"(bit)); \
   __tmp; })
+
+#define stm_trace(id, value) \
+  { \
+  asm volatile ("mv a0,%0": :"r" ((uint64_t)value) : "a0"); \
+  asm volatile ("csrw swtrace, %0" :: "r"(id)); \
+  }
 
 #define rdtime() read_csr(time)
 #define rdcycle() read_csr(cycle)
@@ -498,6 +510,10 @@
 #define MASK_FNMSUB_D  0x600007f
 #define MATCH_FNMADD_D 0x200004f
 #define MASK_FNMADD_D  0x600007f
+#define MATCH_TAGR 0x57
+#define MASK_TAGR  0xfff0707f
+#define MATCH_TAGW 0x1057
+#define MASK_TAGW  0xfff0707f
 #define MATCH_C_NOP 0x1
 #define MASK_C_NOP  0xffff
 #define MATCH_C_ADDI16SP 0x6101
@@ -636,6 +652,8 @@
 #define CSR_CYCLE 0xc00
 #define CSR_TIME 0xc01
 #define CSR_INSTRET 0xc02
+#define CSR_TAGCTRL 0x8f0
+#define CSR_SWTRACE 0x8ff
 #define CSR_SSTATUS 0x100
 #define CSR_SIE 0x104
 #define CSR_STVEC 0x105
@@ -659,8 +677,8 @@
 #define CSR_MCAUSE 0x342
 #define CSR_MBADADDR 0x343
 #define CSR_MIP 0x344
-#define CSR_MUCOUNTEREN 0x310
-#define CSR_MSCOUNTEREN 0x311
+#define CSR_MUCOUNTEREN 0x320
+#define CSR_MSCOUNTEREN 0x321
 #define CSR_MUCYCLE_DELTA 0x700
 #define CSR_MUTIME_DELTA 0x701
 #define CSR_MUINSTRET_DELTA 0x702
@@ -700,6 +718,7 @@
 #define CAUSE_SUPERVISOR_ECALL 0x9
 #define CAUSE_HYPERVISOR_ECALL 0xa
 #define CAUSE_MACHINE_ECALL 0xb
+#define CAUSE_TAG_CHECK_FAIL 0x10
 #endif
 #ifdef DECLARE_INSN
 DECLARE_INSN(beq, MATCH_BEQ, MASK_BEQ)
@@ -864,6 +883,8 @@ DECLARE_INSN(fmadd_d, MATCH_FMADD_D, MASK_FMADD_D)
 DECLARE_INSN(fmsub_d, MATCH_FMSUB_D, MASK_FMSUB_D)
 DECLARE_INSN(fnmsub_d, MATCH_FNMSUB_D, MASK_FNMSUB_D)
 DECLARE_INSN(fnmadd_d, MATCH_FNMADD_D, MASK_FNMADD_D)
+DECLARE_INSN(tagr, MATCH_TAGR, MASK_TAGR)
+DECLARE_INSN(tagw, MATCH_TAGW, MASK_TAGW)
 DECLARE_INSN(c_nop, MATCH_C_NOP, MASK_C_NOP)
 DECLARE_INSN(c_addi16sp, MATCH_C_ADDI16SP, MASK_C_ADDI16SP)
 DECLARE_INSN(c_jr, MATCH_C_JR, MASK_C_JR)
@@ -938,6 +959,8 @@ DECLARE_CSR(fcsr, CSR_FCSR)
 DECLARE_CSR(cycle, CSR_CYCLE)
 DECLARE_CSR(time, CSR_TIME)
 DECLARE_CSR(instret, CSR_INSTRET)
+DECLARE_CSR(tagctrl, CSR_TAGCTRL)
+DECLARE_CSR(swtrace, CSR_SWTRACE)
 DECLARE_CSR(sstatus, CSR_SSTATUS)
 DECLARE_CSR(sie, CSR_SIE)
 DECLARE_CSR(stvec, CSR_STVEC)
@@ -1004,4 +1027,5 @@ DECLARE_CAUSE("user_ecall", CAUSE_USER_ECALL)
 DECLARE_CAUSE("supervisor_ecall", CAUSE_SUPERVISOR_ECALL)
 DECLARE_CAUSE("hypervisor_ecall", CAUSE_HYPERVISOR_ECALL)
 DECLARE_CAUSE("machine_ecall", CAUSE_MACHINE_ECALL)
+DECLARE_CAUSE("tag check fail", CAUSE_TAG_CHECK_FAIL)
 #endif
