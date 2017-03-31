@@ -7,6 +7,8 @@
 #include <limits.h>
 
 #include "encoding.h"
+#include "memory.h"
+#include "bits.h"
 #include "uart.h"
 
 #define SYS_write 64
@@ -70,11 +72,12 @@ void tohost_exit(long code)
     }
     uart_send_string(str);
   }
-  while(1) {
-#ifdef DEV_MAP__io_ext_host__BASE
-    *(volatile uint64_t *)(DEV_MAP__io_ext_host__BASE) = (code<<1)|1;
-#endif
-  }
+  uintptr_t mstatus = read_csr(mstatus);
+  mstatus = INSERT_FIELD(mstatus, MSTATUS_MPP, PRV_M);
+  mstatus = INSERT_FIELD(mstatus, MSTATUS_MPIE, 1);
+  write_csr(mstatus, mstatus);
+  write_csr(mepc, 0);
+  asm volatile ("mret");
 }
 
 static char trap_rpt_buf [256];

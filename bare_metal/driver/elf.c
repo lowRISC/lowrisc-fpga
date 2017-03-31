@@ -25,7 +25,7 @@
  * MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
  *
  *----------------------------------------------------------------------------
- * Copyright (c) 2015-2016, University of Cambridge.
+ * Copyright (c) 2015-2017, University of Cambridge.
  * All Rights Reserved.
  * 
  * Redistribution and use in source and binary forms, with or without

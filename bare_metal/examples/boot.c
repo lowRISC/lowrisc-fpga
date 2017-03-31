@@ -8,7 +8,6 @@
 #include "uart.h"
 #include "elf.h"
 #include "memory.h"
-#include "spi.h"
 
 FATFS FatFs;   // Work area (file system object) for logical drive
 
@@ -20,6 +19,8 @@ FATFS FatFs;   // Work area (file system object) for logical drive
 
 // 4K size read burst
 #define SD_READ_SIZE 4096
+
+char md5buf[SD_READ_SIZE];
 
 int main (void)
 {
@@ -51,9 +52,14 @@ int main (void)
   uint32_t fsize = 0;           // file size count
   uint32_t br;                  // Read count
   do {
-    fr = f_read(&fil, buf, SD_READ_SIZE, &br);  // Read a chunk of source file
-    buf += br;
-    fsize += br;
+    char *sum;
+    fr = f_read(&fil, boot_file_buf+fsize, SD_READ_SIZE, &br);  // Read a chunk of source file
+    if (!fr)
+      {
+	uart_send("|/-\\"[(fsize/SD_READ_SIZE)&3]);
+	uart_send('\b');
+	fsize += br;
+      }
   } while(!(fr || br == 0));
 
   printf("Load %lld bytes to memory address %llx from boot.bin of %lld bytes.\n", fsize, boot_file_buf, fil.fsize);
@@ -72,8 +78,6 @@ int main (void)
     printf("fail to umount disk!");
     return 1;
   }
-
-  spi_disable();
 
   printf("Boot the loaded program...\n");
 

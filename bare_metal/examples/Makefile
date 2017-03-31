@@ -20,7 +20,7 @@ GEN_DIR = $(FPGA_DIR)/generated-src
 RISCV_PREFIX=riscv64-unknown-elf-
 RISCV_GCC = $(RISCV_PREFIX)gcc
 RISCV_DUMP = $(RISCV_PREFIX)objdump
-RISCV_GCC_OPTS = -mcmodel=medany -fpie -static -std=gnu99 -O3 -ffast-math -fno-common -fno-builtin-printf -I$(DRIVER_DIR) -I$(GEN_DIR)
+RISCV_GCC_OPTS = -mcmodel=medany -fpie -static -std=gnu99 -g -Os -ffast-math -fno-common -fno-builtin-printf -I$(DRIVER_DIR) -I$(GEN_DIR) -I$(BASE_DIR)
 RISCV_DUMP_OPTS = -D -S -l
 RISCV_LINK = $(RISCV_GCC) -T $(DRIVER_DIR)/test.ld
 RISCV_LINK_OPTS = -nostdlib -nostartfiles -ffast-math -lc -lgcc
@@ -31,9 +31,9 @@ RISCV_LINK_OPTS = -nostdlib -nostartfiles -ffast-math -lc -lgcc
 
 default: all
 
-TARGETS = boot dram hello sdcard trace jump flash tag
+TARGETS = boot dram hello sdcard trace jump flash tag selftest
 
-DRIVER_TARGETS = syscalls spi uart memory elf diskio ff
+DRIVER_TARGETS = syscalls spi uart memory elf diskio ff minion_helper sdhci-minion-hash-md5
 
 HEADERS += $(wildcard $(DRIVER_DIR)/*.h) $(GEN_DIR)/dev_map.h
 

@@ -4,10 +4,14 @@
 #include "diskio.h"
 #include "ff.h"
 #include "uart.h"
+#include "trace.h"
 
 /* Read a text file and display it */
 
 FATFS FatFs;   /* Work area (file system object) for logical drive */
+
+void board_mmc_power_init(void);
+void minion_dispatch(const char *ucmd);
 
 int main (void)
 {
@@ -17,8 +21,11 @@ int main (void)
   uint32_t br;            /* Read count */
   uint32_t i;
 
-  uart_init();
+  STM_TRACE(0x1234, 0xdeadbeef);
 
+  uart_init();
+  board_mmc_power_init();
+  
   /* Register work area to the default drive */
   if(f_mount(&FatFs, "", 1)) {
     printf("Fail to mount SD driver!\n");
@@ -28,7 +35,7 @@ int main (void)
   /* Open a text file */
   fr = f_open(&fil, "test.txt", FA_READ);
   if (fr) {
-    printf("failed to open test.text!\n");
+    printf("failed to open test.txt!\n");
     return (int)fr;
   } else {
     printf("test.txt opened\n");
