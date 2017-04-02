@@ -14,9 +14,6 @@ FATFS FatFs;   // Work area (file system object) for logical drive
 // max size of file image is 16M
 #define MAX_FILE_SIZE 0x1000000
 
-// size of DDR RAM (128M for NEXYS4-DDR) 
-#define DDR_SIZE 0x8000000
-
 // 4K size read burst
 #define SD_READ_SIZE 4096
 
@@ -26,7 +23,7 @@ int main (void)
 {
   FIL fil;                // File object
   FRESULT fr;             // FatFs return code
-  uint8_t *boot_file_buf = (uint8_t *)(get_ddr_base()) + DDR_SIZE - MAX_FILE_SIZE; // at the end of DDR space
+  uint8_t *boot_file_buf = (uint8_t *)(get_ddr_base()) + ((uint64_t)DEV_MAP__mem__MASK + 1) - MAX_FILE_SIZE; // at the end of DDR space
   uint8_t *memory_base = (uint8_t *)(get_ddr_base());
 
   uart_init();

@@ -55,6 +55,16 @@
 #include <elf.h>
 #include <string.h>
 #include <stdio.h>
+#include "sdhci-minion-hash-md5.h"
+
+#ifndef IS_ELF64
+#define IS_ELF(hdr)					  \
+  ((hdr).e_ident[0] == 0x7f && (hdr).e_ident[1] == 'E' && \
+   (hdr).e_ident[2] == 'L'  && (hdr).e_ident[3] == 'F')
+
+#define IS_ELF32(hdr) (IS_ELF(hdr) && (hdr).e_ident[4] == 1)
+#define IS_ELF64(hdr) (IS_ELF(hdr) && (hdr).e_ident[4] == 2)
+#endif
 
 int load_elf(const uint8_t *elf, const uint32_t elf_size) {
   // sanity checks
@@ -72,13 +82,27 @@ int load_elf(const uint8_t *elf, const uint32_t elf_size) {
   uint32_t i;
   for(i=0; i<eh->e_phnum; i++) {
     if(ph[i].p_type == PT_LOAD && ph[i].p_memsz) { /* need to load this physical section */
+      printf("Section[%d]: ", i);
       if(ph[i].p_filesz) {                         /* has data */
-        if(elf_size < ph[i].p_offset + ph[i].p_filesz)
-          return 3;             /* internal damaged */
-        memcpy((uint8_t *)ph[i].p_paddr, elf + ph[i].p_offset, ph[i].p_filesz);
+	uint8_t *paddr = (uint8_t *)ph[i].p_paddr;
+	const uint8_t *elf_offset = elf + ph[i].p_offset;
+	size_t len = ph[i].p_filesz;
+	size_t extent = ph[i].p_offset + len;
+        if(elf_size < extent)
+	  {
+	    printf("len required = %lX, actual = %x\n", extent, elf_size);
+	    return 3;             /* internal damaged */
+	  }
+	printf("memcpy(%p,0x%p,0x%lx);\n", paddr, elf_offset, len);
+        memcpy(paddr, elf_offset, len);
+	hash_buf(paddr, len);
       }
       if(ph[i].p_memsz > ph[i].p_filesz) { /* zero padding */
-        memset((uint8_t *)ph[i].p_paddr + ph[i].p_filesz, 0, ph[i].p_memsz - ph[i].p_filesz);
+	uint8_t *bss = (uint8_t *)ph[i].p_paddr + ph[i].p_filesz;
+	size_t len = ph[i].p_memsz - ph[i].p_filesz;
+	printf("memset(%p,0,0x%lx);\n", bss, len);
+        memset(bss, 0, len);
+	hash_buf(bss, len);
       }
     }
   }

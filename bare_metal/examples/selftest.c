@@ -313,13 +313,10 @@ int trace_main() {
 // max size of file image is 16M
 #define MAX_FILE_SIZE 0x1000000
 
-// size of DDR RAM (128M for NEXYS4-DDR) 
-#define DDR_SIZE 0x8000000
-
 // 4K size read burst
 #define SD_READ_SIZE 4096
 
-static uint8_t *boot_file_buf = (uint8_t *)((uint64_t *)(DEV_MAP__mem__BASE)) + DDR_SIZE - MAX_FILE_SIZE; // at the end of DDR space
+static uint8_t *boot_file_buf = (uint8_t *)((uint64_t *)(DEV_MAP__mem__BASE)) + ((uint64_t)DEV_MAP__mem__MASK + 1) - MAX_FILE_SIZE; // at the end of DDR space
 static uint8_t *memory_base = (uint8_t *)((uint64_t *)(DEV_MAP__mem__BASE));
 static char kernel[32];
 
@@ -336,12 +333,7 @@ void boot(int fsize)
 
   printf("Boot the loaded program...\n");
 
-  uintptr_t mstatus = read_csr(mstatus);
-  mstatus = INSERT_FIELD(mstatus, MSTATUS_MPP, PRV_M);
-  mstatus = INSERT_FIELD(mstatus, MSTATUS_MPIE, 1);
-  write_csr(mstatus, mstatus);
-  write_csr(mepc, memory_base);
-  asm volatile ("mret");
+  just_jump();
 }
 
 // A flash boot program
@@ -548,6 +540,12 @@ void show_sector(u8 *buf)
   myputchar('\n');
 }
 
+void myhash(size_t addr)
+{
+  u8 *buf = minion_iobuf(addr);
+  hash_buf(buf, 512);
+}
+
 void minion_dispatch(const char *ucmd)
 {
   int i, rca, busy;
@@ -664,13 +662,19 @@ void minion_dispatch(const char *ucmd)
 	break;
       case 'r':
 	nxt = scan(ucmd+1, &addr, 16);
-	myputchar('r');
-	myputchar(' ');
-	myputhex(addr, 8);
-	myputchar(',');
-	data = queue_read((unsigned *)addr);
-	myputhex(data, 2);
-	myputchar('\n');
+	addr &= ~3;
+	nxt = scan(nxt, &addr2, 16);
+	while (addr <= addr2)
+	  {
+	    myputchar('r');
+	    myputchar(' ');
+	    myputhex(addr, 8);
+	    myputchar(':');
+	    data = *(unsigned *)addr;
+	    myputhex(data, 8);
+	    myputchar('\n');
+	    addr += 4;
+	  }
 	break;
       case 'R':
 	nxt = scan(ucmd+1, &addr, 16);
@@ -703,6 +707,14 @@ void minion_dispatch(const char *ucmd)
 	sd_transaction_v(sdcmd, arg, setting);
 	myputchar('\n');
 	break;
+      case 'S':
+	{
+	  myputchar('S');
+	  myputchar(' ');
+	  myputhex((unsigned long)&i, 8);
+	  myputchar('\n');
+	  break;
+	}
       case 't':
 	nxt = scan(ucmd+1, &data, 16);
 	myputchar('t');

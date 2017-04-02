@@ -187,9 +187,3 @@ uint8_t *hash_buf(const void *in_buf, int count)
  printf("md5(%p,%d) = %s\n", in_buf, count, hash_value);
  return hash_value;
 }
-
-void myhash(size_t addr)
-{
-  u8 *buf = minion_iobuf(addr);
-  hash_buf(buf, 512);
-}
