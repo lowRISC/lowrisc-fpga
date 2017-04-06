@@ -486,7 +486,7 @@ void _get_card_status(int line, int verbose)
 
 void board_mmc_power_init(void)
 {
-  sd_clk_div(0x10);
+  sd_clk_div(0x20);
   sd_reset(1,1,0,0);
   get_card_status(0);
   sd_blkcnt(1);
@@ -901,7 +901,7 @@ int sdhci_write(u8 *buf, uint32_t val, int reg)
 	  if (sdhci_clock_div < 5) sdhci_clock_div = 5;
 	  if (sdhci_clock_div > 255) sdhci_clock_div = 255;
 	  printf("Actual clock divider = %d\n", sdhci_clock_div);
-	  sd_clk_div(sdhci_clock_div);
+	  sd_clk_div(sdhci_clock_div*2);
 	  sdhci_timeout_control = 1250000 / sdhci_clock_div;
 #ifdef SDHCI_VERBOSE3
 	  printf("Actual timeout control = %d\n", sdhci_timeout_control);
