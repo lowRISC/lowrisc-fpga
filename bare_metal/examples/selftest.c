@@ -365,8 +365,8 @@ int prepare (const char *cmdline)
   uint32_t br = 0;                  // Read count
 
   printf("lowRISC boot program\n=====================================\n");
-  if (cmdline[1])
-    strcpy(kernel, cmdline+1);
+  if (cmdline[0])
+    strcpy(kernel, cmdline);
   else strcpy(kernel, "boot.bin");
 
   memset(buffer, 0, sizeof(buffer));
@@ -542,14 +542,9 @@ void show_sector(u8 *buf)
   myputchar('\n');
 }
 
-void myhash(size_t addr)
-{
-  u8 *buf = minion_iobuf(addr);
-  hash_buf(buf, 512);
-}
-
 void minion_dispatch(const char *ucmd)
 {
+  u8 buf[512];
   int i, rca, busy;
   size_t addr, addr2, data, sdcmd, arg, setting;
   const char *nxt;
@@ -607,24 +602,24 @@ void minion_dispatch(const char *ucmd)
 	nxt = scan(nxt, &addr2, 16);
 	do
 	  {
-	    if (!addr2)
+	    if (!sd_read_sector(addr, buf, sizeof buf))
 	      {
-		u8 *buf = minion_iobuf(addr);
-		myputchar('h');
-		myputchar(' ');
-		myputhex(addr, 8);
-		myputchar(':');
-		show_sector(buf);
+		if (!addr2)
+		  {
+		    myputchar('h');
+		    myputchar(' ');
+		    myputhex(addr, 8);
+		    myputchar(':');
+		    show_sector(buf);
+		  }
+		else
+		  {
+		    hash_buf(buf, 512);
+		  }
+		++addr;
 	      }
-	    else myhash(addr);
-	    ++addr;
 	  }
 	while ((addr <= addr2) && addr2);
-	break;
-      case 'H':
-	addr = 0;
-	while (minion_cache_map(addr, 0)==1)
-	    myhash(addr++);
 	break;
       case 'i':
 	nxt = scan(ucmd+1, &addr, 16);
@@ -637,7 +632,7 @@ void minion_dispatch(const char *ucmd)
 	nxt = scan(nxt, &addr2, 16);
 	if (!addr2) addr2 = addr;
 	init_sd();
-	for (i = addr; i <= addr2; i++) sd_read_sector1(i);
+	for (i = addr; i <= addr2; i++) sd_read_sector1(i, buf, sizeof buf);
 	mount(0);
 	break;
       case 'J':
