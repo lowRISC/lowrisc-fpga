@@ -344,11 +344,11 @@ struct minion_uart_ops {
 #define get_card_status(_verbose) _get_card_status(__LINE__, _verbose)
 
 extern uint32_t card_status[32];
-extern int sd_read_sector1(int sect);
+extern int sd_read_sector1(int sect, void *buf, int max);
 extern void card_response(void);
 extern void _get_card_status(int line, int verbose);
 extern void sd_transaction_show(void);
-extern int sd_transaction_finish2(void);
+extern int sd_transaction_finish2(void *buf);
 extern u8 *minion_iobuf(int sect);
 extern void show_sector(u8 *buf);
 extern void myhash(size_t addr);
