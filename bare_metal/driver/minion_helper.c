@@ -175,8 +175,8 @@ extern volatile uint32_t * const sd_base;
 
 void myputchar(char ch);
 void myputs(const char *str);
-int sdhci_write(struct bootstrap_host *host, uint32_t val, int reg);
-uint32_t sdhci_read(struct bootstrap_host *host, int reg);
+int sdhci_write(u8 *buf, uint32_t val, int reg);
+uint32_t sdhci_read(int reg);
 void sdhci_reset(struct bootstrap_host *host, uint8_t mask);
 
 void minion_dispatch(const char *ucmd);
@@ -500,26 +500,18 @@ void board_mmc_power_init(void)
   get_card_status(10);
 }
 
-// try to avoid the area where the new kernel will be loaded
-u8 *minion_iobuf(int sect) { return (u8 *)(get_ddr_base()) +  0x1000000 + sect * 512; }
-
-int minion_cache_map(int sect, int clr) {
-  u32 *map = (u32 *)(get_ddr_base()) + 0x800000;
-  u32 shft = 1U << (sect&31);
-  if (sect < 0)
+int sd_read_sector(int sect, void *buf, int max)
+{
+  int rslt, i = 0;
+  do {
+    rslt = sd_read_sector1(sect, buf, max);
+  }
+  while (i++ < 3 && rslt);
+  if (rslt)
     {
-      myputs("Clearing minion_cache_map\n");
-      memset(map, 0, 0x800000);
-      myputs("Cleared minion_cache_map\n");
-      return 0;
+      printf("More than 3 attempts failed on sector %d\n", sect);
+      return rslt;
     }
-  else if (sect >= 0x10000000) return -1;
-  u32 cached = map[sect >> 5] & shft ? 1 : 0;
-  if (clr)
-    map[sect >> 5] &= ~shft;
-  else
-    map[sect >> 5] |= shft;
-  return cached;
 }
 
 static void minion_sdhci_read_block_pio(u8 *buf)
@@ -654,8 +646,9 @@ void card_response(void)
     }
 }
 
-int sd_transaction_finish(struct bootstrap_host *host, int cmd_flags)
+int sd_transaction_finish(void *buf, int cmd_flags)
 {
+  uint32_t timeout;
   int rslt, setting = 0;
   switch(sdhci_command & SDHCI_CMD_RESP_MASK)
       {
@@ -667,9 +660,12 @@ int sd_transaction_finish(struct bootstrap_host *host, int cmd_flags)
   if (sdhci_host_control & SDHCI_CTRL_4BITBUS) setting |= 0x20;
   if (sdhci_command & SDHCI_CMD_DATA)
       {
+	timeout = sdhci_timeout_control;
 	setting |= (sdhci_transfer_mode & SDHCI_TRNS_READ ? 0x10 : 0x8) | 0x4;
       }
-  get_card_status(0);
+  else
+    timeout = 15;
+  sd_reset(0,1,0,1);
   sd_align(0);
   sd_arg(sdhci_argument);
   sd_cmd(cmd_flags >> 8);
@@ -678,28 +674,24 @@ int sd_transaction_finish(struct bootstrap_host *host, int cmd_flags)
   sd_reset(0,1,1,1);
   sd_blkcnt(sdhci_block_count);
   sd_blksize(sdhci_block_size&0xFFF);
-  sd_timeout(sdhci_timeout_control);
-#ifdef SDHCI_VERBOSE3
-  printf("Timeout control = %d\n", sdhci_timeout_control);
-#endif
+  sd_timeout(timeout);
   get_card_status(0);
   /* drain rx fifo, if needed */
   queue_block_read1();
-  rslt = sd_transaction_finish2();
-#ifdef SDHCI_VERBOSE3
-  get_card_status(0);
-  sd_transaction_show(); 
-#endif
+  rslt = sd_transaction_finish2(buf);
   return rslt;
 }
 
-int sd_transaction_finish2(void)
+int sd_transaction_finish2(void *buf)
 {	
   static int good, bad;	   
   uint32_t timeout, stat, wait, timedout, rslt = 0;
   int retry = 0;
-  do {
   sd_align(0);
+  if ((sdhci_command & SDHCI_CMD_DATA) && !(sdhci_transfer_mode & SDHCI_TRNS_READ))
+        {
+          minion_sdhci_write_block_pio(buf);
+        }
   sd_cmd_start(1);
   get_card_status(1);
   timeout = 0;
@@ -730,12 +722,8 @@ int sd_transaction_finish2(void)
       sd_setting(0);
       rslt = -1;
     }
- if (card_status[20] & 0x4)
+ if (sdhci_command & SDHCI_CMD_DATA)
     {
-      if ((card_status[20] & 0x4) && !(card_status[20] & 0x10))
-	    {
-	      minion_sdhci_write_block_pio(minion_iobuf(card_status[18]));
-	    }
      do
          {
            get_card_status(0);
@@ -745,13 +733,13 @@ int sd_transaction_finish2(void)
       while ((wait != 0x400) && (card_status[8] < card_status[25]));
       if ((card_status[8] < card_status[25]) && card_status[9])
 	{
-	  if (card_status[20] & 0x10)
+	      if (sdhci_transfer_mode & SDHCI_TRNS_READ)
 	    {
 		{
 		  int cnt = queue_block_read1();
 		  if (cnt != 129)
 		    printf("transf_cnt = %d, fifo_cnt = %d\n", card_status[9], cnt);
-		  minion_sdhci_read_block_pio(minion_iobuf(card_status[18]));
+		  minion_sdhci_read_block_pio(buf);
 		}
 	    }
 	}
@@ -760,8 +748,7 @@ int sd_transaction_finish2(void)
 		rslt = -1;
         }
 	}
-  } while ((rslt==-1) && ++retry < 3);
-  if (card_status[20] & 0x10)
+  if (sdhci_transfer_mode & SDHCI_TRNS_READ)
     {
       if (rslt == -1)
 	{
@@ -782,7 +769,7 @@ int sd_transaction_finish2(void)
   return rslt;
 }
 
-void sdhci_minion_hw_reset(struct bootstrap_host *host)
+void sdhci_minion_hw_reset(void)
 {
   printf("sdhci_minion_hw_reset();\n");
 }
@@ -829,7 +816,7 @@ const char *sdhci_kind(int reg)
 }
 #endif  
 
-int sdhci_write(struct bootstrap_host *host, uint32_t val, int reg)
+int sdhci_write(u8 *buf, uint32_t val, int reg)
 {
   int rslt = 0;
 #ifdef SDHCI_VERBOSE2
@@ -868,7 +855,7 @@ int sdhci_write(struct bootstrap_host *host, uint32_t val, int reg)
     case SDHCI_POWER_CONTROL	:
       if (val & SDHCI_POWER_ON)
 	{
-	  sdhci_minion_hw_reset(host);
+	  sdhci_minion_hw_reset();
 	  sd_reset(0,1,0,0);
 	  get_card_status(0);
 	  sd_align(0);
@@ -889,7 +876,7 @@ int sdhci_write(struct bootstrap_host *host, uint32_t val, int reg)
       break;
     case SDHCI_COMMAND	        :
       sdhci_command = val;
-      rslt = sd_transaction_finish(host, sdhci_command);
+      rslt = sd_transaction_finish(buf, sdhci_command);
       break;
     case SDHCI_BLOCK_GAP_CONTROL	: sdhci_block_gap = val; break;
     case SDHCI_WAKE_UP_CONTROL	: sdhci_wake_up = val; break;
@@ -903,7 +890,7 @@ int sdhci_write(struct bootstrap_host *host, uint32_t val, int reg)
     case SDHCI_SOFTWARE_RESET	:
       sdhci_software_reset = val;
       sdhci_transfer_mode = 0;
-      if (val & SDHCI_RESET_ALL) sdhci_minion_hw_reset(host);
+      if (val & SDHCI_RESET_ALL) sdhci_minion_hw_reset();
       get_card_status(0);      
       break;
     case SDHCI_CLOCK_CONTROL	:
@@ -953,7 +940,7 @@ int sdhci_write(struct bootstrap_host *host, uint32_t val, int reg)
   return rslt;
 }
 
-uint32_t sdhci_read(struct bootstrap_host *host, int reg)
+uint32_t sdhci_read(int reg)
 {
   uint32_t rslt = 0;
   switch (reg)
@@ -996,7 +983,7 @@ uint32_t sdhci_read(struct bootstrap_host *host, int reg)
     }
 #ifdef SDHCI_VERBOSE2
   if ((reg != SDHCI_PRESENT_STATE) && (reg != SDHCI_HOST_CONTROL))
-    printf("sdhci_read(&host, %s) => %x;\n", sdhci_kind(reg), rslt);
+    printf("sdhci_read(%s) => %x;\n", sdhci_kind(reg), rslt);
 #endif  
   return rslt;
 }
@@ -1005,6 +992,7 @@ static struct bootstrap_host host;
 
 uint32_t sd_transaction_v(int sdcmd, uint32_t arg, uint32_t setting)
 {
+  static char iobuf[512];
   sd_cmd_start(0);
   sd_setting(0);
   sd_arg(arg);
@@ -1012,7 +1000,7 @@ uint32_t sd_transaction_v(int sdcmd, uint32_t arg, uint32_t setting)
   sd_setting(setting);
   get_card_status(0);
   sd_cmd_start(1);
-  sd_transaction_finish2();
+  sd_transaction_finish2(iobuf);
   get_card_status(0);
   sd_transaction_show();
   return card_status[0] & 0xFFFF0000U;
@@ -1038,37 +1026,38 @@ int i;
   myputchar('\n');
 }
 
- int sd_read_sector1(int sect)
+int sd_read_sector1(int sect, void *buf, int max)
 {
   int rslt = 0;
 #ifdef SDHCI_VERBOSE3
   printf("sd_read_sector1(%d)\n", sect);
 #endif
-sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
- sdhci_present_state = sdhci_read(&host, SDHCI_PRESENT_STATE);
-sdhci_write(&host, 0x00000200, SDHCI_ARGUMENT);
-sdhci_write(&host, 0x0000101A, SDHCI_COMMAND);
- sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
-sdhci_write(&host, 0x00000001, SDHCI_INT_STATUS);
- sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
-sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
-sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
- sdhci_present_state = sdhci_read(&host, SDHCI_PRESENT_STATE);
-sdhci_write(&host, 0x000001F4, SDHCI_TIMEOUT_CONTROL);
-sdhci_write(&host, 0x00000200, SDHCI_BLOCK_SIZE);
-sdhci_write(&host, 0x00000001, SDHCI_BLOCK_COUNT);
-sdhci_write(&host, 0x00000012, SDHCI_TRANSFER_MODE);
-sdhci_write(&host, sect, SDHCI_ARGUMENT);
-rslt = sdhci_write(&host, 0x0000113A, SDHCI_COMMAND);
- sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
- sdhci_write(&host, 0x00000001, SDHCI_INT_STATUS);
- sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
- sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
+sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
+ sdhci_present_state = sdhci_read(SDHCI_PRESENT_STATE);
+sdhci_write(buf, 0x00000200, SDHCI_ARGUMENT);
+sdhci_write(buf, 0x0000101A, SDHCI_COMMAND);
+ sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
+sdhci_write(buf, 0x00000001, SDHCI_INT_STATUS);
+ sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
+sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
+sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
+ sdhci_present_state = sdhci_read(SDHCI_PRESENT_STATE);
+sdhci_write(buf, 0x000001F4, SDHCI_TIMEOUT_CONTROL);
+sdhci_write(buf, 0x00000200, SDHCI_BLOCK_SIZE);
+sdhci_write(buf, 0x00000001, SDHCI_BLOCK_COUNT);
+sdhci_write(buf, 0x00000012, SDHCI_TRANSFER_MODE);
+sdhci_write(buf, sect, SDHCI_ARGUMENT);
+rslt = sdhci_write(buf, 0x0000113A, SDHCI_COMMAND);
+ sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
+ sdhci_write(buf, 0x00000001, SDHCI_INT_STATUS);
+ sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
+ sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
  return rslt;
 }
 
 int init_sd(void)
 {
+  u8 buf[512];
   int div = 255 << SDHCI_DIVIDER_SHIFT;
   int div2 = 12 << SDHCI_DIVIDER_SHIFT;
   size_t addr = 0;
@@ -1080,239 +1069,206 @@ int init_sd(void)
     myputs("card slot is empty\n");
     return -1;
     }
-int sdhci_capabilities = sdhci_read(&host, SDHCI_CAPABILITIES);
-int bootstrap_host_version = sdhci_read(&host, SDHCI_HOST_VERSION);
-sdhci_write(&host, 0x00000001, SDHCI_SOFTWARE_RESET);
-int sdhci_software_reset = sdhci_read(&host, SDHCI_SOFTWARE_RESET);
-sdhci_write(&host, 0x0000000F, SDHCI_POWER_CONTROL);
-sdhci_write(&host, 0x027F003B, SDHCI_INT_ENABLE);
-sdhci_write(&host, 0x00000000, SDHCI_SIGNAL_ENABLE);
-int bootstrap_host_control = sdhci_read(&host, SDHCI_HOST_CONTROL);
-sdhci_write(&host, 0x00000000, SDHCI_HOST_CONTROL);
-int sdhci_present_state = sdhci_read(&host, SDHCI_PRESENT_STATE);
-int sdhci_clock_control = sdhci_read(&host, SDHCI_CLOCK_CONTROL);
-sdhci_write(&host, 0x00000002, SDHCI_CLOCK_CONTROL);
-sdhci_write(&host, div | 0x001, SDHCI_CLOCK_CONTROL);
- sdhci_clock_control = sdhci_read(&host, SDHCI_CLOCK_CONTROL);
-sdhci_write(&host, div | 0x006, SDHCI_CLOCK_CONTROL);
- bootstrap_host_control = sdhci_read(&host, SDHCI_HOST_CONTROL);
-sdhci_write(&host, 0x00000000, SDHCI_HOST_CONTROL);
-sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
- sdhci_present_state = sdhci_read(&host, SDHCI_PRESENT_STATE);
-sdhci_write(&host, 0x00000000, SDHCI_ARGUMENT);
-sdhci_write(&host, 0x00000000, SDHCI_COMMAND);
+int sdhci_capabilities = sdhci_read(SDHCI_CAPABILITIES);
+int bootstrap_host_version = sdhci_read(SDHCI_HOST_VERSION);
+sdhci_write(buf, 0x00000001, SDHCI_SOFTWARE_RESET);
+int sdhci_software_reset = sdhci_read(SDHCI_SOFTWARE_RESET);
+sdhci_write(buf, 0x0000000F, SDHCI_POWER_CONTROL);
+sdhci_write(buf, 0x027F003B, SDHCI_INT_ENABLE);
+sdhci_write(buf, 0x00000000, SDHCI_SIGNAL_ENABLE);
+int bootstrap_host_control = sdhci_read(SDHCI_HOST_CONTROL);
+sdhci_write(buf, 0x00000000, SDHCI_HOST_CONTROL);
+int sdhci_present_state = sdhci_read(SDHCI_PRESENT_STATE);
+int sdhci_clock_control = sdhci_read(SDHCI_CLOCK_CONTROL);
+sdhci_write(buf, 0x00000002, SDHCI_CLOCK_CONTROL);
+sdhci_write(buf, div | 0x001, SDHCI_CLOCK_CONTROL);
+ sdhci_clock_control = sdhci_read(SDHCI_CLOCK_CONTROL);
+sdhci_write(buf, div | 0x006, SDHCI_CLOCK_CONTROL);
+ bootstrap_host_control = sdhci_read(SDHCI_HOST_CONTROL);
+sdhci_write(buf, 0x00000000, SDHCI_HOST_CONTROL);
+sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
+ sdhci_present_state = sdhci_read(SDHCI_PRESENT_STATE);
+sdhci_write(buf, 0x00000000, SDHCI_ARGUMENT);
+sdhci_write(buf, 0x00000000, SDHCI_COMMAND);
 #if 0
- int sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
+ int sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
 int cnt = queue_block_read(iobuf, 0);
 #endif
- sdhci_write(&host, 0x00000001, SDHCI_INT_STATUS);
- sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
-sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
-sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
- sdhci_present_state = sdhci_read(&host, SDHCI_PRESENT_STATE);
-sdhci_write(&host, 0x000001AA, SDHCI_ARGUMENT);
-sdhci_write(&host, 0x0000081A, SDHCI_COMMAND);
- sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
-sdhci_write(&host, 0x00000001, SDHCI_INT_STATUS);
- sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
-sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
+ sdhci_write(buf, 0x00000001, SDHCI_INT_STATUS);
+ sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
+sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
+sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
+ sdhci_present_state = sdhci_read(SDHCI_PRESENT_STATE);
+sdhci_write(buf, 0x000001AA, SDHCI_ARGUMENT);
+sdhci_write(buf, 0x0000081A, SDHCI_COMMAND);
+ sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
+sdhci_write(buf, 0x00000001, SDHCI_INT_STATUS);
+ sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
+sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
 do {
-   sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
-   sdhci_present_state = sdhci_read(&host, SDHCI_PRESENT_STATE);
-   sdhci_write(&host, 0x00000000, SDHCI_ARGUMENT);
-   sdhci_write(&host, 0x0000371A, SDHCI_COMMAND);
-   sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
-   sdhci_write(&host, 0x00000001, SDHCI_INT_STATUS);
-   sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
-   sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
-   sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
-   sdhci_present_state = sdhci_read(&host, SDHCI_PRESENT_STATE);
-   sdhci_write(&host, 0x40300000, SDHCI_ARGUMENT);
-   sdhci_write(&host, 0x00002903, SDHCI_COMMAND);
-   sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
-   sdhci_write(&host, 0x00000001, SDHCI_INT_STATUS);
-   sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
-   sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
+   sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
+   sdhci_present_state = sdhci_read(SDHCI_PRESENT_STATE);
+   sdhci_write(buf, 0x00000000, SDHCI_ARGUMENT);
+   sdhci_write(buf, 0x0000371A, SDHCI_COMMAND);
+   sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
+   sdhci_write(buf, 0x00000001, SDHCI_INT_STATUS);
+   sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
+   sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
+   sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
+   sdhci_present_state = sdhci_read(SDHCI_PRESENT_STATE);
+   sdhci_write(buf, 0x40300000, SDHCI_ARGUMENT);
+   sdhci_write(buf, 0x00002903, SDHCI_COMMAND);
+   sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
+   sdhci_write(buf, 0x00000001, SDHCI_INT_STATUS);
+   sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
+   sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
    busy = sd_resp(0) & 0xFFFF0000U;
    printf("busy = %x\n", busy);
  } while ((0x80000000U & ~busy) && (timeout++ < 100));
 
-sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
-sdhci_present_state = sdhci_read(&host, SDHCI_PRESENT_STATE);
-sdhci_write(&host, 0x00000000, SDHCI_ARGUMENT);
-sdhci_write(&host, 0x00000209, SDHCI_COMMAND);
- sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
-sdhci_write(&host, 0x00000001, SDHCI_INT_STATUS);
- sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
-sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
+sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
+sdhci_present_state = sdhci_read(SDHCI_PRESENT_STATE);
+sdhci_write(buf, 0x00000000, SDHCI_ARGUMENT);
+sdhci_write(buf, 0x00000209, SDHCI_COMMAND);
+ sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
+sdhci_write(buf, 0x00000001, SDHCI_INT_STATUS);
+ sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
+sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
  
-sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
- sdhci_present_state = sdhci_read(&host, SDHCI_PRESENT_STATE);
-sdhci_write(&host, 0x00000000, SDHCI_ARGUMENT);
-sdhci_write(&host, 0x0000031A, SDHCI_COMMAND);
- sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
-sdhci_write(&host, 0x00000001, SDHCI_INT_STATUS);
- sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
-sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
+sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
+ sdhci_present_state = sdhci_read(SDHCI_PRESENT_STATE);
+sdhci_write(buf, 0x00000000, SDHCI_ARGUMENT);
+sdhci_write(buf, 0x0000031A, SDHCI_COMMAND);
+ sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
+sdhci_write(buf, 0x00000001, SDHCI_INT_STATUS);
+ sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
+sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
  rca = sd_resp(0) & 0xFFFF0000U;
  printf("RCA = %x\n", rca);
- sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
- sdhci_present_state = sdhci_read(&host, SDHCI_PRESENT_STATE);
-sdhci_write(&host, rca, SDHCI_ARGUMENT);
-sdhci_write(&host, 0x00000909, SDHCI_COMMAND);
- sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
-sdhci_write(&host, 0x00000001, SDHCI_INT_STATUS);
- sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
-sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
-sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
- sdhci_present_state = sdhci_read(&host, SDHCI_PRESENT_STATE);
-sdhci_write(&host, rca, SDHCI_ARGUMENT);
-sdhci_write(&host, 0x00000D1A, SDHCI_COMMAND);
- sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
-sdhci_write(&host, 0x00000001, SDHCI_INT_STATUS);
- sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
-sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
-sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
- sdhci_present_state = sdhci_read(&host, SDHCI_PRESENT_STATE);
-sdhci_write(&host, rca, SDHCI_ARGUMENT);
-sdhci_write(&host, 0x0000071A, SDHCI_COMMAND);
- sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
-sdhci_write(&host, 0x00000001, SDHCI_INT_STATUS);
- sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
-sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
-sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
- sdhci_present_state = sdhci_read(&host, SDHCI_PRESENT_STATE);
-sdhci_write(&host, rca, SDHCI_ARGUMENT);
-sdhci_write(&host, 0x0000371A, SDHCI_COMMAND);
- sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
-sdhci_write(&host, 0x00000001, SDHCI_INT_STATUS);
- sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
-sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
-sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
- sdhci_present_state = sdhci_read(&host, SDHCI_PRESENT_STATE);
-sdhci_write(&host, 0x000001F4, SDHCI_TIMEOUT_CONTROL);
-sdhci_write(&host, 0x00000008, SDHCI_BLOCK_SIZE);
-sdhci_write(&host, 0x00000001, SDHCI_BLOCK_COUNT);
-sdhci_write(&host, 0x00000012, SDHCI_TRANSFER_MODE);
-sdhci_write(&host, 0x00000000, SDHCI_ARGUMENT);
-sdhci_write(&host, 0x0000333A, SDHCI_COMMAND);
- sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
+ sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
+ sdhci_present_state = sdhci_read(SDHCI_PRESENT_STATE);
+sdhci_write(buf, rca, SDHCI_ARGUMENT);
+sdhci_write(buf, 0x00000909, SDHCI_COMMAND);
+ sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
+sdhci_write(buf, 0x00000001, SDHCI_INT_STATUS);
+ sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
+sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
+sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
+ sdhci_present_state = sdhci_read(SDHCI_PRESENT_STATE);
+sdhci_write(buf, rca, SDHCI_ARGUMENT);
+sdhci_write(buf, 0x00000D1A, SDHCI_COMMAND);
+ sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
+sdhci_write(buf, 0x00000001, SDHCI_INT_STATUS);
+ sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
+sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
+sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
+ sdhci_present_state = sdhci_read(SDHCI_PRESENT_STATE);
+sdhci_write(buf, rca, SDHCI_ARGUMENT);
+sdhci_write(buf, 0x0000071A, SDHCI_COMMAND);
+ sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
+sdhci_write(buf, 0x00000001, SDHCI_INT_STATUS);
+ sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
+sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
+sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
+ sdhci_present_state = sdhci_read(SDHCI_PRESENT_STATE);
+sdhci_write(buf, rca, SDHCI_ARGUMENT);
+sdhci_write(buf, 0x0000371A, SDHCI_COMMAND);
+ sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
+sdhci_write(buf, 0x00000001, SDHCI_INT_STATUS);
+ sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
+sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
+sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
+ sdhci_present_state = sdhci_read(SDHCI_PRESENT_STATE);
+sdhci_write(buf, 0x000001F4, SDHCI_TIMEOUT_CONTROL);
+sdhci_write(buf, 0x00000008, SDHCI_BLOCK_SIZE);
+sdhci_write(buf, 0x00000001, SDHCI_BLOCK_COUNT);
+sdhci_write(buf, 0x00000012, SDHCI_TRANSFER_MODE);
+sdhci_write(buf, 0x00000000, SDHCI_ARGUMENT);
+sdhci_write(buf, 0x0000333A, SDHCI_COMMAND);
+ sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
 #if 0
  cnt = queue_block_read(iobuf, 8);
 #endif
- sdhci_write(&host, 0x00000001, SDHCI_INT_STATUS);
- sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
-sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
-sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
- sdhci_present_state = sdhci_read(&host, SDHCI_PRESENT_STATE);
-sdhci_write(&host, 0x000001F4, SDHCI_TIMEOUT_CONTROL);
-sdhci_write(&host, 0x00000040, SDHCI_BLOCK_SIZE);
-sdhci_write(&host, 0x00000001, SDHCI_BLOCK_COUNT);
-sdhci_write(&host, 0x00000012, SDHCI_TRANSFER_MODE);
-sdhci_write(&host, 0x00FFFFF1, SDHCI_ARGUMENT);
-sdhci_write(&host, 0x0000063A, SDHCI_COMMAND);
+ sdhci_write(buf, 0x00000001, SDHCI_INT_STATUS);
+ sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
+sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
+sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
+ sdhci_present_state = sdhci_read(SDHCI_PRESENT_STATE);
+sdhci_write(buf, 0x000001F4, SDHCI_TIMEOUT_CONTROL);
+sdhci_write(buf, 0x00000040, SDHCI_BLOCK_SIZE);
+sdhci_write(buf, 0x00000001, SDHCI_BLOCK_COUNT);
+sdhci_write(buf, 0x00000012, SDHCI_TRANSFER_MODE);
+sdhci_write(buf, 0x00FFFFF1, SDHCI_ARGUMENT);
+sdhci_write(buf, 0x0000063A, SDHCI_COMMAND);
 #if 0
- sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
+ sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
 cnt = queue_block_read(iobuf, 64);
  #endif
-sdhci_write(&host, 0x00000001, SDHCI_INT_STATUS);
- sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
-sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
-sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
- sdhci_present_state = sdhci_read(&host, SDHCI_PRESENT_STATE);
-sdhci_write(&host, 0x000001F4, SDHCI_TIMEOUT_CONTROL);
-sdhci_write(&host, 0x00000040, SDHCI_BLOCK_SIZE);
-sdhci_write(&host, 0x00000001, SDHCI_BLOCK_COUNT);
-sdhci_write(&host, 0x00000012, SDHCI_TRANSFER_MODE);
-sdhci_write(&host, 0x80FFFFF1, SDHCI_ARGUMENT);
-sdhci_write(&host, 0x0000063A, SDHCI_COMMAND);
- sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
+sdhci_write(buf, 0x00000001, SDHCI_INT_STATUS);
+ sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
+sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
+sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
+ sdhci_present_state = sdhci_read(SDHCI_PRESENT_STATE);
+sdhci_write(buf, 0x000001F4, SDHCI_TIMEOUT_CONTROL);
+sdhci_write(buf, 0x00000040, SDHCI_BLOCK_SIZE);
+sdhci_write(buf, 0x00000001, SDHCI_BLOCK_COUNT);
+sdhci_write(buf, 0x00000012, SDHCI_TRANSFER_MODE);
+sdhci_write(buf, 0x80FFFFF1, SDHCI_ARGUMENT);
+sdhci_write(buf, 0x0000063A, SDHCI_COMMAND);
+ sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
 #if 0
  cnt = queue_block_read(iobuf, 64);
  #endif
-sdhci_write(&host, 0x00000001, SDHCI_INT_STATUS);
- sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
-sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
-sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
- sdhci_present_state = sdhci_read(&host, SDHCI_PRESENT_STATE);
-sdhci_write(&host, rca, SDHCI_ARGUMENT);
-sdhci_write(&host, 0x0000371A, SDHCI_COMMAND);
- sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
-sdhci_write(&host, 0x00000001, SDHCI_INT_STATUS);
- sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
-sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
-sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
- sdhci_present_state = sdhci_read(&host, SDHCI_PRESENT_STATE);
-sdhci_write(&host, 0x00000002, SDHCI_ARGUMENT);
-sdhci_write(&host, 0x0000061A, SDHCI_COMMAND);
- sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
-sdhci_write(&host, 0x00000001, SDHCI_INT_STATUS);
- sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
-sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
- bootstrap_host_control = sdhci_read(&host, SDHCI_HOST_CONTROL);
-sdhci_write(&host, 0x00000002, SDHCI_HOST_CONTROL);
-sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
- sdhci_present_state = sdhci_read(&host, SDHCI_PRESENT_STATE);
-sdhci_write(&host, rca, SDHCI_ARGUMENT);
-sdhci_write(&host, 0x0000371A, SDHCI_COMMAND);
- sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
-sdhci_write(&host, 0x00000001, SDHCI_INT_STATUS);
- sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
-sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
-sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
- sdhci_present_state = sdhci_read(&host, SDHCI_PRESENT_STATE);
-sdhci_write(&host, 0x000001F4, SDHCI_TIMEOUT_CONTROL);
-sdhci_write(&host, 0x00000040, SDHCI_BLOCK_SIZE);
-sdhci_write(&host, 0x00000001, SDHCI_BLOCK_COUNT);
-sdhci_write(&host, 0x00000012, SDHCI_TRANSFER_MODE);
-sdhci_write(&host, 0x00000000, SDHCI_ARGUMENT);
-sdhci_write(&host, 0x00000D3A, SDHCI_COMMAND);
- sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
-sdhci_write(&host, 0x00000001, SDHCI_INT_STATUS);
- sdhci_int_status = sdhci_read(&host, SDHCI_INT_STATUS);
-sdhci_write(&host, 0xFFFFFFFF, SDHCI_INT_STATUS);
- sdhci_present_state = sdhci_read(&host, SDHCI_PRESENT_STATE);
- sdhci_clock_control = sdhci_read(&host, SDHCI_CLOCK_CONTROL);
-sdhci_write(&host, div2 | 0x002, SDHCI_CLOCK_CONTROL);
-sdhci_write(&host, div2 | 0x001, SDHCI_CLOCK_CONTROL);
- sdhci_clock_control = sdhci_read(&host, SDHCI_CLOCK_CONTROL);
-sdhci_write(&host, div2 | 0x006, SDHCI_CLOCK_CONTROL);
- bootstrap_host_control = sdhci_read(&host, SDHCI_HOST_CONTROL);
-sdhci_write(&host, 0x00000002, SDHCI_HOST_CONTROL);
- minion_cache_map(-1, 0);
+sdhci_write(buf, 0x00000001, SDHCI_INT_STATUS);
+ sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
+sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
+sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
+ sdhci_present_state = sdhci_read(SDHCI_PRESENT_STATE);
+sdhci_write(buf, rca, SDHCI_ARGUMENT);
+sdhci_write(buf, 0x0000371A, SDHCI_COMMAND);
+ sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
+sdhci_write(buf, 0x00000001, SDHCI_INT_STATUS);
+ sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
+sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
+sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
+ sdhci_present_state = sdhci_read(SDHCI_PRESENT_STATE);
+sdhci_write(buf, 0x00000002, SDHCI_ARGUMENT);
+sdhci_write(buf, 0x0000061A, SDHCI_COMMAND);
+ sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
+sdhci_write(buf, 0x00000001, SDHCI_INT_STATUS);
+ sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
+sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
+ bootstrap_host_control = sdhci_read(SDHCI_HOST_CONTROL);
+sdhci_write(buf, 0x00000002, SDHCI_HOST_CONTROL);
+sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
+ sdhci_present_state = sdhci_read(SDHCI_PRESENT_STATE);
+sdhci_write(buf, rca, SDHCI_ARGUMENT);
+sdhci_write(buf, 0x0000371A, SDHCI_COMMAND);
+ sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
+sdhci_write(buf, 0x00000001, SDHCI_INT_STATUS);
+ sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
+sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
+sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
+ sdhci_present_state = sdhci_read(SDHCI_PRESENT_STATE);
+sdhci_write(buf, 0x000001F4, SDHCI_TIMEOUT_CONTROL);
+sdhci_write(buf, 0x00000040, SDHCI_BLOCK_SIZE);
+sdhci_write(buf, 0x00000001, SDHCI_BLOCK_COUNT);
+sdhci_write(buf, 0x00000012, SDHCI_TRANSFER_MODE);
+sdhci_write(buf, 0x00000000, SDHCI_ARGUMENT);
+sdhci_write(buf, 0x00000D3A, SDHCI_COMMAND);
+ sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
+sdhci_write(buf, 0x00000001, SDHCI_INT_STATUS);
+ sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
+sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
+ sdhci_present_state = sdhci_read(SDHCI_PRESENT_STATE);
+ sdhci_clock_control = sdhci_read(SDHCI_CLOCK_CONTROL);
+sdhci_write(buf, div2 | 0x002, SDHCI_CLOCK_CONTROL);
+sdhci_write(buf, div2 | 0x001, SDHCI_CLOCK_CONTROL);
+ sdhci_clock_control = sdhci_read(SDHCI_CLOCK_CONTROL);
+sdhci_write(buf, div2 | 0x006, SDHCI_CLOCK_CONTROL);
+ bootstrap_host_control = sdhci_read(SDHCI_HOST_CONTROL);
+sdhci_write(buf, 0x00000002, SDHCI_HOST_CONTROL);
  return 0;
-}
-
-int sd_read_sector(int sect, void *buf, int max)
-{
-  int rslt, i = 0;
-  switch (minion_cache_map(sect, 0))
-    {
-    case 0:
-      do {
-	rslt = sd_read_sector1(sect);
-      }
-      while (i++ < 3 && rslt);
-      if (rslt)
-	{
-	  /* clear this sector from cache */
-	  minion_cache_map(sect, 1);
-	  printf("More than 3 attempts failed on sector %d\n", sect);
-	  return rslt;
-	}
-      break;
-    case 1:
-#ifdef VERBOSE2
-      myhash(sect);
-#endif
-      break;
-    default: printf("cache error\n"); return -1;
-    }
-  memcpy(buf, minion_iobuf(sect), max);
-#if VERBOSE2
-  hash_buf(buf, max);
-#endif
-  return 0;
 }
 
 uint8_t send_cmd (uint8_t cmd, uint32_t arg, uint32_t flag)
