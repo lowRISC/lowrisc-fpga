@@ -494,7 +494,7 @@ void board_mmc_power_init(void)
 
   sd_align(0);
 
-  sd_timeout(1000);
+  sd_timeout(500000);
   get_card_status(0);
   sd_reset(0,1,1,1);
   get_card_status(10);
@@ -674,7 +674,7 @@ int sd_transaction_finish(void *buf, int cmd_flags)
   sd_reset(0,1,1,1);
   sd_blkcnt(sdhci_block_count);
   sd_blksize(sdhci_block_size&0xFFF);
-  sd_timeout(timeout);
+  sd_timeout(500000);
   get_card_status(0);
   /* drain rx fifo, if needed */
   queue_block_read1();
@@ -881,7 +881,7 @@ int sdhci_write(u8 *buf, uint32_t val, int reg)
     case SDHCI_BLOCK_GAP_CONTROL	: sdhci_block_gap = val; break;
     case SDHCI_WAKE_UP_CONTROL	: sdhci_wake_up = val; break;
     case SDHCI_TIMEOUT_CONTROL	:
-      sdhci_timeout_control = 1250000 / sdhci_clock_div;
+      sdhci_timeout_control = 500000;
       if (sdhci_timeout_control < val) sdhci_timeout_control = val;
 #ifdef SDHCI_VERBOSE3
       printf("Actual timeout control = %d\n", sdhci_timeout_control);
@@ -902,7 +902,7 @@ int sdhci_write(u8 *buf, uint32_t val, int reg)
 	  if (sdhci_clock_div > 255) sdhci_clock_div = 255;
 	  printf("Actual clock divider = %d\n", sdhci_clock_div);
 	  sd_clk_div(sdhci_clock_div*2);
-	  sdhci_timeout_control = 1250000 / sdhci_clock_div;
+	  sdhci_timeout_control = 500000;
 #ifdef SDHCI_VERBOSE3
 	  printf("Actual timeout control = %d\n", sdhci_timeout_control);
 #endif
