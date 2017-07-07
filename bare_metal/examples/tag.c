@@ -5,15 +5,16 @@
 #include <stdio.h>
 #include <stdint.h>
 #include "memory.h"
+#include "encoding.h"
 
 #define NUM_TAGS 1024
-#define MAX_ADDR 0x20000000
-#define ADDR_MASK 0x1FFFFFF8
+#define MAX_ADDR 0x4000000
+#define ADDR_MASK 0x3FFFFF8
 #define TAG_MASK 0xF
 
 int load_tag(void *addr) {
-  int rv = 32;
-  asm volatile ("ltag %0, 0(%1)"
+  int rv;
+  asm volatile ("lw %0, 0(%1); tagr %0, %0"
                 :"=r"(rv)
                 :"r"(addr)
                 );
@@ -22,7 +23,7 @@ int load_tag(void *addr) {
 
 
 void store_tag(void *addr, int tag) {
-  asm volatile ("stag %0, 0(%1)"
+  asm volatile ("tagw %0, %0; andi %0, %0, 0; amoor.w %0, %0, 0(%1)"
                 :
                 :"r"(tag), "r"(addr)
                 );
@@ -70,7 +71,11 @@ int main( int argc, char* argv[] )
   uint64_t cnt =0;
   uint8_t buf_valid = 0;
 
-  buf = (uint8_t *)get_ddr_base() + (uint64_t)0x20000000;
+  // enable tag ALU/LOAD/STORE Propagartion
+  uint64_t tag_mask = TMASK_ALU_PROP|TMASK_LOAD_PROP|TMASK_STORE_PROP;
+  write_csr(utagctrl, tag_mask);
+
+  buf = (uint8_t *)get_ddr_base();
 
   while(cnt++ < 50000) {
     if((cnt & 0xff) == 0) printf("pass %d iterations...\n", cnt);
