@@ -33,7 +33,7 @@ default: all
 
 TARGETS = boot dram hello sdcard trace jump flash eth
 
-DRIVER_TARGETS = syscalls spi uart memory elf diskio ff
+DRIVER_TARGETS = syscalls uart uip uip_arp uip-split tcpip process etimer timer mt mtarch clock elf # spi memory elf diskio ff
 
 HEADERS += $(wildcard $(DRIVER_DIR)/*.h) $(GEN_DIR)/dev_map.h
 
@@ -67,7 +67,7 @@ $(RISCV_FILES): %.riscv:$(BASE_DIR)/%.c $(HEADERS) $(DRIVER_OBJS) crt.o $(DRIVER
 	$(RISCV_LINK) $(RISCV_GCC_OPTS) -o $@ $< $(DRIVER_OBJS) crt.o $(RISCV_LINK_OPTS)
 
 $(HEX_FILES): %.hex:%.riscv
-	elf2hex 1073741824 16 4096 $< > $@
+	env LD_LIBRARY_PATH=$(RISCV)/lib elf2hex 1073741824 16 4096 $< > $@
 
 $(DUMP_FILES): %.dump:%.riscv
 	$(RISCV_DUMP) $(RISCV_DUMP_OPTS) $< > $@
