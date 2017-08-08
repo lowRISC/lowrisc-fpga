@@ -60,13 +60,13 @@ void die(char *s)
     perror(s);
     exit(1);
 }
- 
-#define DEST_MAC0	0xf4
-#define DEST_MAC1	0xf2
-#define DEST_MAC2	0x6d
-#define DEST_MAC3	0x03
-#define DEST_MAC4	0xb7
-#define DEST_MAC5	0xc5
+
+#define DEST_MAC0	0xff
+#define DEST_MAC1	0xff
+#define DEST_MAC2	0xff
+#define DEST_MAC3	0xff
+#define DEST_MAC4	0xff
+#define DEST_MAC5	0xff
 
 #define ETHER_TYPE	0x0800
 
@@ -92,12 +92,48 @@ void send_message(int s, uint16_t idx)
 	     sizeof(si_other)) == -1) die("sendto()");
 }
 
+int recv_message(int sockfd)
+{
+  int update = 0;
+  ssize_t numbytes;
+  uint8_t buf[BUF_SIZ];
+  /* Header structures */
+  struct ether_header *eh = (struct ether_header *) buf;
+  struct udphdr *udph = (struct udphdr *) (buf + sizeof(struct iphdr) + sizeof(struct ether_header));
+  uint8_t *payload = (buf + sizeof(struct iphdr) + sizeof(struct ether_header) + sizeof(struct udphdr));
+  do {
+    numbytes = recvfrom(sockfd, buf, BUF_SIZ, 0, NULL, NULL);
+    if (numbytes > 0)
+      {
+        int len;
+        /* Check the packet is for me */
+        if (eh->ether_dhost[0] == DEST_MAC0 &&
+            eh->ether_dhost[1] == DEST_MAC1 &&
+            eh->ether_dhost[2] == DEST_MAC2 &&
+            eh->ether_dhost[3] == DEST_MAC3 &&
+            eh->ether_dhost[4] == DEST_MAC4 &&
+            eh->ether_dhost[5] == DEST_MAC5) {
+          /* UDP payload length */
+          len = ntohs(udph->len) - sizeof(struct udphdr);
+#if 0
+          printf("listener: got packet %lu bytes\n", len);
+#endif          
+          if (len == sizeof(maskarray))
+            memcpy(maskarray, payload, len);
+          update = 1;
+        }
+      }
+  }
+  while (numbytes > 0);
+  return update;
+}
+
 int main(int argc, char *argv[])
 {
   char sender[INET6_ADDRSTRLEN];
-  int sockfd, ret, i;
-  int sockopt;
-  ssize_t numbytes;
+  int sockfd, i, ret = 0;
+  int sockopt, restart = 0;
+  int oldpercent = -1;
   struct ifreq ifopts;	/* set promiscuous mode */
   struct ifreq if_ip;	/* get ip addr */
   struct sockaddr_storage their_addr;
@@ -108,7 +144,14 @@ int main(int argc, char *argv[])
   int incomplete = 1;
   uint16_t idx;
   char *m;
-	
+
+  if (!strcmp(argv[1], "-r"))
+    {
+      restart = 1;
+      ++argv;
+      --argc;
+    }
+  
   /* Get interface name */
   if (argc < 3)
     die("args: interface (e.g. eth0) file (e.g. boot.bin)");
@@ -137,7 +180,6 @@ int main(int argc, char *argv[])
   struct ether_header *eh = (struct ether_header *) buf;
   struct iphdr *iph = (struct iphdr *) (buf + sizeof(struct ether_header));
   struct udphdr *udph = (struct udphdr *) (buf + sizeof(struct iphdr) + sizeof(struct ether_header));
-  uint8_t *payload = (buf + sizeof(struct iphdr) + sizeof(struct ether_header) + sizeof(struct udphdr));
   
   memset(&if_ip, 0, sizeof(struct ifreq));
   
@@ -170,50 +212,56 @@ int main(int argc, char *argv[])
   /* set read timeout */
   struct timeval read_timeout;
   read_timeout.tv_sec = 0;
-  read_timeout.tv_usec = 10000;
+  read_timeout.tv_usec = 100;
   setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &read_timeout, sizeof read_timeout);
 
-  send_message(s, 0xFFFC);
-  send_message(s, 0xFFFE);
+  /* restart */
+  while (restart)
+    {
+      printf("Restarting\n");
+      do {
+        send_message(s, 0xFFFE);
+      }
+      while (!recv_message(sockfd));
+      restart = 0;
+      for (i = 0; i < sizeof(maskarray)/sizeof(*maskarray); i++)
+        {
+          if (maskarray[i]) restart = 1;
+        }
+    }
   
   while (incomplete)
     {
       incomplete = 0;
-      for (idx = 0; idx < chunks; idx++)
+      for (idx = 0; idx < chunks; ++idx)
 	{
 	  if (!(maskarray[idx/64] & (1ULL << (idx&63))))
 	    {
-	      printf("%d\n", idx);
+              int percent = idx*100/chunks;
+              if (percent > oldpercent)
+                {
+                printf(" %d%%\r", percent);
+                fflush(stdout);
+                }
+              oldpercent = percent;
 	      ++incomplete;
 	      memcpy(message, m+idx*CHUNK_SIZE, CHUNK_SIZE);
 	      //send the message
 	      send_message(s, idx);
-	      do {
-		numbytes = recvfrom(sockfd, buf, BUF_SIZ, 0, NULL, NULL);
-		if (numbytes > 0)
-		  {
-		    /* Check the packet is for me */
-		    if (eh->ether_dhost[0] == DEST_MAC0 &&
-			eh->ether_dhost[1] == DEST_MAC1 &&
-			eh->ether_dhost[2] == DEST_MAC2 &&
-			eh->ether_dhost[3] == DEST_MAC3 &&
-			eh->ether_dhost[4] == DEST_MAC4 &&
-			eh->ether_dhost[5] == DEST_MAC5) {
-		      /* UDP payload length */
-		      ret = ntohs(udph->len) - sizeof(struct udphdr);
-		      printf("listener: got packet %lu bytes\n", ret);
-		      if (ret == sizeof(maskarray))
-			memcpy(maskarray, payload, ret);
-		    }
-		  }
-	      }
-	      while (numbytes > 0);
+              if (recv_message(sockfd))
+                idx = 0;
 	    }
 	}
       send_message(s, 0xFFFD);
+      if (!recv_message(sockfd))
+        incomplete = 1;
     }
 
-  send_message(s, 0xFFFF);
+  do {
+       send_message(s, 0xFFFF);
+     }
+  while (!recv_message(sockfd));
+  
   close(s);
   close(sockfd);
   return ret;

@@ -55,14 +55,15 @@ volatile uint64_t * get_ddr_base() {
 }
 
 static volatile unsigned int * const eth_base = (volatile unsigned int*)ETH_BASE;
-static void axi_write(size_t addr, int data, int strb)
+
+static void axi_write(int pingpong, size_t addr, int data, int strb)
 {
-  eth_base[addr>>2] = data;
+  eth_base[((pingpong&1 ? XEL_BUFFER_OFFSET : 0) | addr) >> 2] = data;
 }
-static int axi_read(size_t addr)
+
+static int axi_read(int pingpong, size_t addr)
 {
-  int rslt = eth_base[addr>>2];
-  return rslt;
+  return eth_base[((pingpong&1 ? XEL_BUFFER_OFFSET : 0) | addr) >> 2];
 }
 
 /* Register offsets for the EmacLite Core */
@@ -135,7 +136,7 @@ static int axi_read(size_t addr)
 #define ETH_P_ARP	0x0806		/* Address Resolution packet	*/
 #define ETH_FRAME_LEN	1514		/* Max. octets in frame sans FCS */
 
-static void eth_poll(void);
+static void eth_poll(int pp);
 static uip_eth_addr mac_addr;
 
 typedef unsigned char __u_char;
@@ -695,122 +696,130 @@ uint32_t __bswap_32(uint32_t x)
 #define min(x,y) (x) < (y) ? (x) : (y)
 #define UDPBUF ((struct uip_udpip_hdr *)&uip_buf[UIP_LLH_LEN])
 
-int verbose;
-void process_packet(int size, const u_char *buffer);
+void process_my_packet(int pp, int size, const u_char *buffer);
 
-static void copyin_pkt(int length)
+static void copyin_pkt(int pp, int length)
 {
   int i;
   for (i = 0; i < ((length-1|3)+1)/4; i++)
 	  {
-	  ((uint32_t *)uip_buf)[i] = axi_read(XEL_RXBUFF_OFFSET+(i<<2));
+            ((uint32_t *)uip_buf)[i] = axi_read(pp, XEL_RXBUFF_OFFSET+(i<<2));
 	  }
   uip_len = length;
 }
 
-static void lite_copyout(int length)
+static void lite_copyout(int pp, int length)
 {
   int i, rslt;
   for (i = 0; i < ((length-1|3)+1)/4; i++)
 	  {
-	    axi_write(XEL_TXBUFF_OFFSET+(i<<2), ((uint32_t *)uip_buf)[i], 0xf);
+	    axi_write(pp, XEL_TXBUFF_OFFSET+(i<<2), ((uint32_t *)uip_buf)[i], 0xf);
  	  }
 }
 
-static void lite_xmit(int length)
+static void lite_xmit(int pp, int length)
 {
   int rslt;
-  axi_write(XEL_GIER_OFFSET,XEL_GIER_GIE_MASK,0xf);
-  axi_write(XEL_TPLR_OFFSET,length,0xf);
-  axi_write(XEL_TSR_OFFSET,XEL_TSR_XMIT_IE_MASK|XEL_TSR_XMIT_BUSY_MASK,0xf);
+  axi_write(pp, XEL_GIER_OFFSET,XEL_GIER_GIE_MASK,0xf);
+  axi_write(pp, XEL_TPLR_OFFSET,length,0xf);
+  axi_write(pp, XEL_TSR_OFFSET,XEL_TSR_XMIT_IE_MASK|XEL_TSR_XMIT_BUSY_MASK,0xf);
  do
    {
-     rslt = axi_read(XEL_TSR_OFFSET);
+     rslt = axi_read(pp, XEL_TSR_OFFSET);
+#ifdef VERBOSE
      printf("TX Status = %x\n", rslt);
+#endif
    }
  while (rslt == (XEL_TSR_XMIT_IE_MASK|XEL_TSR_XMIT_BUSY_MASK));
  rslt &= ~XEL_TSR_XMIT_ACTIVE_MASK;
- axi_write(XEL_TSR_OFFSET, rslt, 0xf);
+ axi_write(pp, XEL_TSR_OFFSET, rslt, 0xf);
 }
 
-static void eth_dummy(void)
+static void eth_dummy(int pp)
 {
-  axi_write(0x00000000,0xffffffff,0xf);
-  axi_write(0x00000004,0xffffffff,0xf);
-  axi_write(0x00000008,0xffffffff,0xf);
-  axi_write(0x0000000c,0x11111111,0xf);
-  axi_write(0x00000010,0x22222222,0xf);
-  axi_write(0x00000014,0x33333333,0xf);
-  axi_read(0x0000001c);
-  axi_write(0x00000020,0x55555555,0xf);
-  lite_xmit(0x14);
+  axi_write(pp, 0x00000000,0xffffffff,0xf);
+  axi_write(pp, 0x00000004,0xffffffff,0xf);
+  axi_write(pp, 0x00000008,0xffffffff,0xf);
+  axi_write(pp, 0x0000000c,0x11111111,0xf);
+  axi_write(pp, 0x00000010,0x22222222,0xf);
+  axi_write(pp, 0x00000014,0x33333333,0xf);
+  axi_read(pp, 0x0000001c);
+  axi_write(pp, 0x00000020,0x55555555,0xf);
+  lite_xmit(pp, 0x14);
 }
 
-static void eth_poll(void)
+static void eth_poll(int pp)
 {
   int i, rslt, lenmask, proto_type, length;
- lenmask = axi_read(XEL_RSR_OFFSET);
- //printf("RX Status = %x\n", lenmask);
- /* Check if there is Rx Data available */
- if (lenmask & XEL_RSR_RECV_DONE_MASK)
-	  {
-	    int header = axi_read(XEL_HEADER_OFFSET + XEL_RXBUFF_OFFSET);
-	    if (verbose) printf("header = %x\n", header);
-	    /* Get the protocol type of the ethernet frame that arrived */
-	    proto_type = ntohs(header) & XEL_RPLR_LENGTH_MASK;
-
-	    if (verbose) printf("proto_type = %x\n", proto_type);
-	/* Check if received ethernet frame is a raw ethernet frame
-	 * or an IP packet or an ARP packet */
-	if (proto_type > ETH_DATA_LEN) {
-
-		if (proto_type == ETH_P_IP) {
-		  if (verbose) printf("proto = IP\n");
-		  length = ((ntohl(axi_read(
-					      XEL_HEADER_IP_LENGTH_OFFSET +
-					      XEL_RXBUFF_OFFSET)) >>
-			       XEL_HEADER_SHIFT) &
-			      XEL_RPLR_LENGTH_MASK);
-		    length = min(length, ETH_DATA_LEN);
-		    length += ETH_HLEN + ETH_FCS_LEN;
-		    copyin_pkt(length);
-		    process_packet(length, uip_buf);
-
-		} else if (proto_type == ETH_P_ARP)
-		  {
-		    if (verbose) printf("proto = ARP\n");
-		    length = XEL_ARP_PACKET_SIZE + ETH_HLEN + ETH_FCS_LEN;
-		    copyin_pkt(length);
-		    uip_arp_arpin();
-		    /* If the above function invocation resulted in data that
-		       should be sent out on the network, the global variable
-		       uip_len is set to a value > 0. */
-		    if(uip_len > 0) {
-		      printf("sending ARP reply (length = %d)\n", uip_len);
-		      lite_copyout(uip_len);
-		      lite_xmit(uip_len);
-		    }
-		  }
-		else
-		  {
-		    /* Field contains type other than IP or ARP, use max
-		     * frame size and let user parse it */
-		    length = ETH_FRAME_LEN + ETH_FCS_LEN;
-		    copyin_pkt(length);
-		    process_packet(length, uip_buf);
-		  }
-	} else
-	  {
-	    if (verbose) printf("proto = raw ethernet frame\n");
-	    /* Use the length in the frame, plus the header and trailer */
-	    length = proto_type + ETH_HLEN + ETH_FCS_LEN;
-	    copyin_pkt(length);
-	    process_packet(length, uip_buf);
-	  }
-	if (verbose) printf("length = %d\n", length);
-	axi_write(XEL_RSR_OFFSET, lenmask & ~XEL_RSR_RECV_DONE_MASK, 0xf);
-	  }
- 
+  lenmask = axi_read(pp, XEL_RSR_OFFSET);
+  //printf("RX Status = %x\n", lenmask);
+  /* Check if there is Rx Data available */
+  if (lenmask & XEL_RSR_RECV_DONE_MASK)
+    {
+      int header = axi_read(pp, XEL_HEADER_OFFSET + XEL_RXBUFF_OFFSET);
+#ifdef VERBOSE
+      printf("header = %x\n", header);
+#endif
+      /* Get the protocol type of the ethernet frame that arrived */
+      proto_type = ntohs(header) & XEL_RPLR_LENGTH_MASK;
+      
+#ifdef VERBOSE
+      printf("proto_type = %x\n", proto_type);
+#endif
+      /* Check if received ethernet frame is a raw ethernet frame
+       * or an IP packet or an ARP packet */
+      if (proto_type > ETH_DATA_LEN) {
+        
+        if (proto_type == ETH_P_IP) {
+#ifdef VERBOSE
+          printf("proto = IP\n");
+#endif
+          length = ((ntohl(axi_read(pp, 
+                                    XEL_HEADER_IP_LENGTH_OFFSET +
+                                    XEL_RXBUFF_OFFSET)) >>
+                     XEL_HEADER_SHIFT) &
+                    XEL_RPLR_LENGTH_MASK);
+          length = min(length, ETH_DATA_LEN);
+          length += ETH_HLEN + ETH_FCS_LEN;
+          copyin_pkt(pp, length);
+          process_my_packet(pp, length, uip_buf);
+          
+        } else if (proto_type == ETH_P_ARP)
+          {
+            printf("proto = ARP\n");
+            length = XEL_ARP_PACKET_SIZE + ETH_HLEN + ETH_FCS_LEN;
+            copyin_pkt(pp, length);
+            uip_arp_arpin();
+            /* If the above function invocation resulted in data that
+               should be sent out on the network, the global variable
+               uip_len is set to a value > 0. */
+            if(uip_len > 0) {
+              printf("sending ARP reply (length = %d)\n", uip_len);
+              lite_copyout(pp, uip_len);
+              lite_xmit(pp, uip_len);
+            }
+          }
+        else
+          {
+            /* Field contains type other than IP or ARP, use max
+             * frame size and let user parse it */
+            length = ETH_FRAME_LEN + ETH_FCS_LEN;
+            copyin_pkt(pp, length);
+            process_my_packet(pp, length, uip_buf);
+          }
+      } else
+        {
+          printf("proto = raw ethernet frame\n");
+          /* Use the length in the frame, plus the header and trailer */
+          length = proto_type + ETH_HLEN + ETH_FCS_LEN;
+          copyin_pkt(pp, length);
+          process_my_packet(pp, length, uip_buf);
+        }
+#ifdef VERBOSE
+      printf("length = %d\n", length);
+#endif
+      axi_write(pp, XEL_RSR_OFFSET, lenmask & ~XEL_RSR_RECV_DONE_MASK, 0xf);
+    }
 }
 
 extern in_addr_t inet_addr (const char *__cp) __attribute__ ((__nothrow__ , __leaf__));
@@ -1166,14 +1175,14 @@ struct tcp_cookie_transactions
 void process_ip_packet(const u_char * , int);
 void print_ip_packet(const u_char * , int);
 void print_tcp_packet(const u_char * , int );
-void process_udp_packet(const u_char * , int);
+void process_udp_packet(int pp, const u_char * , int);
 void print_icmp_packet(const u_char * , int );
 void PrintData (const u_char * , int);
-int raw_udp_main(u_int16_t peer_port, const u_char *, void *, int);
+int raw_udp_main(int pp, u_int16_t peer_port, const u_char *, void *, int);
 
 int tcp=0,udp=0,icmp=0,others=0,igmp=0,total=0,j;
 
-void process_packet(int size, const u_char *buffer)
+void process_my_packet(int pp, int size, const u_char *buffer)
 {
   int i;
     struct iphdr *iph = (struct iphdr*)(buffer + sizeof(struct ethhdr));
@@ -1200,7 +1209,7 @@ void process_packet(int size, const u_char *buffer)
             break;
         case 17:
             ++udp;
-            process_udp_packet(buffer , size);
+            process_udp_packet(pp, buffer , size);
             break;
         default:
 	  printf("IP header protocol %x\n", iph->protocol);
@@ -1305,7 +1314,8 @@ void print_tcp_packet(const u_char * Buffer, int Size)
 // size of DDR RAM (128M for NEXYS4-DDR) 
 #define DDR_SIZE 0x8000000
 
-u_int16_t peer_port;
+static int oldidx;
+static u_int16_t peer_port;
 static u_char peer_addr[6];
 static uint64_t maskarray[MAX_FILE_SIZE/CHUNK_SIZE/64];
 
@@ -1314,6 +1324,7 @@ int main() {
   uip_ipaddr_t addr;
   uart_init();
   printf("Hello Ethernet!\n");
+  memset(maskarray, 0, sizeof(maskarray));
   
   mac_addr.addr[0] = (uint8_t)0x00;
   mac_addr.addr[1] = (uint8_t)0x00;
@@ -1348,10 +1359,10 @@ int main() {
     if (++cnt >= 1000000)
       {
 	printf("peer port %d\n", peer_port);
-	raw_udp_main(peer_port, peer_addr, maskarray, sizeof(maskarray));
+	raw_udp_main(cnt, peer_port, peer_addr, maskarray, sizeof(maskarray));
 	cnt = 0;
       }
-    eth_poll();
+    eth_poll(cnt);
   } while (1);
 }
 
@@ -1376,8 +1387,8 @@ void boot(uint8_t *boot_file_buf, uint32_t fsize)
   write_csr(mepc, memory_base);
   asm volatile ("mret");
 }
-  
-void process_udp_packet(const u_char *Buffer, int Size)
+
+void process_udp_packet(int pp, const u_char *Buffer, int Size)
 {
     unsigned short iphdrlen;
     struct ethhdr *ethh = (struct ethhdr *)Buffer;
@@ -1405,6 +1416,7 @@ void process_udp_packet(const u_char *Buffer, int Size)
 	    }
 	  case 0xFFFE:
 	    {
+              oldidx = 0;
 	      printf("Clear blocks requested\n");
 	      memset(maskarray, 0, sizeof(maskarray));
 	      break;
@@ -1412,21 +1424,13 @@ void process_udp_packet(const u_char *Buffer, int Size)
 	  case 0xFFFD:
 	    {
 	      printf("Report blocks requested\n");
-	      memcpy(peer_addr, ethh->h_source, 6);
-	      raw_udp_main(peer_port, peer_addr, maskarray, sizeof(maskarray));
-	      break;
-	    }
-	  case 0xFFFC:
-	    {
-	      printf("Verbose requested\n");
-	      verbose = 1;
+              //	      memcpy(peer_addr, ethh->h_source, 6);
+	      raw_udp_main(pp, peer_port, peer_addr, maskarray, sizeof(maskarray));
 	      break;
 	    }
 	  default:
 	    {
 	      uint8_t *boot_file_ptr = boot_file_buf+idx*CHUNK_SIZE;
-	      if (verbose)
-		printf("Data Payload index %d\n", idx);
 	      if (boot_file_ptr+CHUNK_SIZE < boot_file_buf_end)
 		{
 		  memcpy(boot_file_ptr, data, CHUNK_SIZE);
@@ -1436,8 +1440,16 @@ void process_udp_packet(const u_char *Buffer, int Size)
 		}
 	      else
 		printf("Data Payload index %d out of range\n", idx);
-	    }
-	  }
+              //	        memcpy(peer_addr, ethh->h_source, 6);
+              raw_udp_main(pp, peer_port, peer_addr, maskarray, sizeof(maskarray));
+#ifdef VERBOSE
+              printf("Data Payload index %d\n", idx);
+#else
+              if (idx > oldidx) printf(".");
+#endif
+              oldidx = idx;
+            }
+          }
       }
 }
 
@@ -1751,7 +1763,7 @@ static unsigned short csum(unsigned short *buf, int nwords)
 
     // Source IP, source port, target IP, target port from the command line arguments
 
-int raw_udp_main(u_int16_t peer_port, const u_char raw_addr[], void *msg, int payload_size)
+int raw_udp_main(int pp, u_int16_t peer_port, const u_char raw_addr[], void *msg, int payload_size)
     {
       struct ethhdr *eth = (struct ethhdr *)uip_buf;
       struct iphdr *ip = (struct iphdr *) (uip_buf + sizeof(struct ethhdr));
@@ -1802,8 +1814,8 @@ int raw_udp_main(u_int16_t peer_port, const u_char raw_addr[], void *msg, int pa
     ip->check = csum((unsigned short *)uip_buf, sizeof(struct iphdr) + sizeof(struct udphdr) + payload_size);
 
     uip_len = sizeof(struct ethhdr) + sizeof(struct iphdr) + sizeof(struct udphdr) + payload_size;
-    lite_copyout(uip_len);
-    lite_xmit(uip_len);
+    lite_copyout(pp, uip_len);
+    lite_xmit(pp, uip_len);
 
     return 0;
 
