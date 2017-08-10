@@ -75,13 +75,19 @@ void tohost_exit(long code)
 
 static char trap_rpt_buf [256];
 
+void handle_interrupt(long cause)
+{
+  sprintf(trap_rpt_buf, "interrupt source=%0x\n", cause);
+}
+
 long handle_trap(long cause, long epc, long regs[32])
 {
   int* csr_insn;
   asm ("jal %0, 1f; csrr a0, 0xcc0; 1:" : "=r"(csr_insn));
   long sys_ret = 0;
-
-  if (cause == CAUSE_ILLEGAL_INSTRUCTION &&
+  if (cause >= 0)
+    handle_interrupt(cause);
+  else if (cause == CAUSE_ILLEGAL_INSTRUCTION &&
       (*(int*)epc & *csr_insn) == *csr_insn)
     ;                           /* why single this out? csrr/csrrs stats is OK */
   else if (cause != CAUSE_MACHINE_ECALL) {
