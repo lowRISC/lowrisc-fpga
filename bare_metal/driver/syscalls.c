@@ -74,19 +74,53 @@ void tohost_exit(long code)
 }
 
 static char trap_rpt_buf [256];
+void external_interrupt(void);
+
+void old_handle_interrupt(long cause)
+{
+#ifdef VERBOSE  
+  sprintf(trap_rpt_buf, "mcause=%d\n", cause);
+  uart_send_string(trap_rpt_buf);
+#endif
+  external_interrupt();
+}
+
+void handle_interrupt(long cause)
+{
+  char code[20];
+  cause &= 0x7FFFFFFF;
+  switch(cause)
+    {
+    case IRQ_S_SOFT   : strcpy(code, "IRQ_S_SOFT   "); break;
+    case IRQ_H_SOFT   : strcpy(code, "IRQ_H_SOFT   "); break;
+    case IRQ_M_SOFT   : strcpy(code, "IRQ_M_SOFT   "); break;
+    case IRQ_S_TIMER  : strcpy(code, "IRQ_S_TIMER  "); break;
+    case IRQ_H_TIMER  : strcpy(code, "IRQ_H_TIMER  "); break;
+    case IRQ_M_TIMER  : strcpy(code, "IRQ_M_TIMER  "); break;
+    case IRQ_S_DEV    : strcpy(code, "IRQ_S_DEV    "); break;
+    case IRQ_H_DEV    : strcpy(code, "IRQ_H_DEV    "); break;
+    case IRQ_M_DEV    : strcpy(code, "IRQ_M_DEV    "); break;
+    case IRQ_COP      : strcpy(code, "IRQ_COP      "); break;
+    case IRQ_HOST     : strcpy(code, "IRQ_HOST     "); break;
+    default           : sprintf(code, "IRQ_%x     ", cause);
+    }
+ sprintf(trap_rpt_buf, "interrupt source=%s\n", code);
+ uart_send_string(trap_rpt_buf);
+ if (cause==IRQ_HOST)
+   external_interrupt();  
+}
 
 long handle_trap(long cause, long epc, long regs[32])
 {
   int* csr_insn;
   asm ("jal %0, 1f; csrr a0, 0xcc0; 1:" : "=r"(csr_insn));
   long sys_ret = 0;
-
   if (cause == CAUSE_ILLEGAL_INSTRUCTION &&
       (*(int*)epc & *csr_insn) == *csr_insn)
     ;                           /* why single this out? csrr/csrrs stats is OK */
   else if (cause != CAUSE_MACHINE_ECALL) {
     // do some report
-    sprintf(trap_rpt_buf, "mcause=%0x\n", cause);
+    sprintf(trap_rpt_buf, "mcause=%d\n", cause);
     uart_send_string(trap_rpt_buf);
     sprintf(trap_rpt_buf, "mepc=%0x\n", epc);
     uart_send_string(trap_rpt_buf);

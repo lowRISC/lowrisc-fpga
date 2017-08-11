@@ -31,7 +31,7 @@ RISCV_LINK_OPTS = -nostdlib -nostartfiles -ffast-math -lc -lgcc
 
 default: all
 
-TARGETS = boot dram hello sdcard trace jump flash eth
+TARGETS = boot dram hello sdcard trace jump flash eth intc
 
 DRIVER_TARGETS = syscalls uart uip uip_arp uip-split tcpip process etimer timer mt mtarch clock elf # spi memory elf diskio ff
 

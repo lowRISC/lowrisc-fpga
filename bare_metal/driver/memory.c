@@ -21,3 +21,19 @@ volatile uint64_t * get_flash_base() {
   return (uint64_t *)0;         /* boot ROM, raise error */
 #endif
 }
+
+volatile uint32_t * get_gpio_base() {
+#ifdef DEV_MAP__io_ext_gpio__BASE
+  return (uint32_t *)(DEV_MAP__io_ext_gpio__BASE);
+#else
+  return (uint32_t *)0;         /* boot ROM, raise error */
+#endif
+}
+
+volatile uint32_t * get_eth_base() {
+#ifdef DEV_MAP__io_ext_eth__BASE
+  return (uint32_t *)(DEV_MAP__io_ext_eth__BASE);
+#else
+  return (uint32_t *)0;         /* boot ROM, raise error */
+#endif
+}

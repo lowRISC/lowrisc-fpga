@@ -50,13 +50,26 @@ int mini_printf(const char *fmt, ...);
 #include "eth.h"
 #include "net/ipv4/uip_arp.h"
 
+enum {queuelen = 1024};
+typedef enum { unknown_p, raw_p, user_p, arp_p, icmp_p, udp_p, tcp_p, ip_p } proto_t;
+
+int head, tail;
+
+typedef struct inqueue_t {
+  void *alloc;
+  int length;
+  proto_t proto;
+} inqueue_t;
+
+inqueue_t *ringbuf;
+
 volatile uint64_t * get_ddr_base() {
   return (uint64_t *)(DEV_MAP__mem__BASE);
 }
 
 static volatile unsigned int * const eth_base = (volatile unsigned int*)ETH_BASE;
 
-static void axi_write(int pingpong, size_t addr, int data, int strb)
+static void axi_write(int pingpong, size_t addr, int data)
 {
   eth_base[((pingpong&1 ? XEL_BUFFER_OFFSET : 0) | addr) >> 2] = data;
 }
@@ -65,69 +78,6 @@ static int axi_read(int pingpong, size_t addr)
 {
   return eth_base[((pingpong&1 ? XEL_BUFFER_OFFSET : 0) | addr) >> 2];
 }
-
-/* Register offsets for the EmacLite Core */
-#define XEL_TXBUFF_OFFSET	0x0		/* Transmit Buffer */
-#define XEL_MDIOADDR_OFFSET	0x07E4		/* MDIO Address Register */
-#define XEL_MDIOWR_OFFSET	0x07E8		/* MDIO Write Data Register */
-#define XEL_MDIORD_OFFSET	0x07EC		/* MDIO Read Data Register */
-#define XEL_MDIOCTRL_OFFSET	0x07F0		/* MDIO Control Register */
-#define XEL_GIER_OFFSET		0x07F8		/* GIE Register */
-#define XEL_TSR_OFFSET		0x07FC		/* Tx status */
-#define XEL_TPLR_OFFSET		0x07F4		/* Tx packet length */
-
-#define XEL_RXBUFF_OFFSET	0x1000		/* Receive Buffer */
-#define XEL_RPLR_OFFSET		0x100C		/* Rx packet length */
-#define XEL_RSR_OFFSET		0x17FC		/* Rx status */
-
-#define XEL_BUFFER_OFFSET	0x0800		/* Next Tx/Rx buffer's offset */
-
-/* MDIO Address Register Bit Masks */
-#define XEL_MDIOADDR_REGADR_MASK  0x0000001F	/* Register Address */
-#define XEL_MDIOADDR_PHYADR_MASK  0x000003E0	/* PHY Address */
-#define XEL_MDIOADDR_PHYADR_SHIFT 5
-#define XEL_MDIOADDR_OP_MASK	  0x00000400	/* RD/WR Operation */
-
-/* MDIO Write Data Register Bit Masks */
-#define XEL_MDIOWR_WRDATA_MASK	  0x0000FFFF	/* Data to be Written */
-
-/* MDIO Read Data Register Bit Masks */
-#define XEL_MDIORD_RDDATA_MASK	  0x0000FFFF	/* Data to be Read */
-
-/* MDIO Control Register Bit Masks */
-#define XEL_MDIOCTRL_MDIOSTS_MASK 0x00000001	/* MDIO Status Mask */
-#define XEL_MDIOCTRL_MDIOEN_MASK  0x00000008	/* MDIO Enable */
-
-/* Global Interrupt Enable Register (GIER) Bit Masks */
-#define XEL_GIER_GIE_MASK	0x80000000	/* Global Enable */
-
-/* Transmit Status Register (TSR) Bit Masks */
-#define XEL_TSR_XMIT_BUSY_MASK	 0x00000001	/* Tx complete */
-#define XEL_TSR_PROGRAM_MASK	 0x00000002	/* Program the MAC address */
-#define XEL_TSR_XMIT_IE_MASK	 0x00000008	/* Tx interrupt enable bit */
-#define XEL_TSR_XMIT_ACTIVE_MASK 0x80000000	/* Buffer is active, SW bit
-						 * only. This is not documented
-						 * in the HW spec */
-
-/* Define for programming the MAC address into the EmacLite */
-#define XEL_TSR_PROG_MAC_ADDR	(XEL_TSR_XMIT_BUSY_MASK | XEL_TSR_PROGRAM_MASK)
-
-/* Receive Status Register (RSR) */
-#define XEL_RSR_RECV_DONE_MASK	0x00000001	/* Rx complete */
-#define XEL_RSR_RECV_IE_MASK	0x00000008	/* Rx interrupt enable bit */
-
-/* Transmit Packet Length Register (TPLR) */
-#define XEL_TPLR_LENGTH_MASK	0x0000FFFF	/* Tx packet length */
-
-/* Receive Packet Length Register (RPLR) */
-#define XEL_RPLR_LENGTH_MASK	0x0000FFFF	/* Rx packet length */
-
-#define XEL_HEADER_OFFSET	12		/* Offset to length field */
-#define XEL_HEADER_SHIFT	16		/* Shift value for length */
-
-/* General Ethernet Definitions */
-#define XEL_ARP_PACKET_SIZE		28	/* Max ARP packet size */
-#define XEL_HEADER_IP_LENGTH_OFFSET	16	/* IP Length Offset */
 
 #define ETH_DATA_LEN	1500		/* Max. octets in payload	 */
 #define ETH_P_IP	0x0800		/* Internet Protocol packet	*/
@@ -697,15 +647,21 @@ uint32_t __bswap_32(uint32_t x)
 #define UDPBUF ((struct uip_udpip_hdr *)&uip_buf[UIP_LLH_LEN])
 
 void process_my_packet(int pp, int size, const u_char *buffer);
+void *sbrk(size_t len);
 
-static void copyin_pkt(int pp, int length)
+static void copyin_pkt(int pp, int length, proto_t proto)
 {
   int i;
-  for (i = 0; i < ((length-1|3)+1)/4; i++)
+  int rnd = ((length-1|3)+1);
+  uint32_t *alloc = sbrk(rnd);
+  for (i = 0; i < rnd/4; i++)
 	  {
-            ((uint32_t *)uip_buf)[i] = axi_read(pp, XEL_RXBUFF_OFFSET+(i<<2));
+            alloc[i] = axi_read(pp, XEL_RXBUFF_OFFSET+(i<<2));
 	  }
-  uip_len = length;
+  ringbuf[head].alloc = alloc;
+  ringbuf[head].length = length;
+  ringbuf[head].proto = proto;
+  head = (head + 1) % queuelen;
 }
 
 static void lite_copyout(int pp, int length)
@@ -713,16 +669,15 @@ static void lite_copyout(int pp, int length)
   int i, rslt;
   for (i = 0; i < ((length-1|3)+1)/4; i++)
 	  {
-	    axi_write(pp, XEL_TXBUFF_OFFSET+(i<<2), ((uint32_t *)uip_buf)[i], 0xf);
+	    axi_write(pp, XEL_TXBUFF_OFFSET+(i<<2), ((uint32_t *)uip_buf)[i]);
  	  }
 }
 
 static void lite_xmit(int pp, int length)
 {
   int rslt;
-  axi_write(pp, XEL_GIER_OFFSET,XEL_GIER_GIE_MASK,0xf);
-  axi_write(pp, XEL_TPLR_OFFSET,length,0xf);
-  axi_write(pp, XEL_TSR_OFFSET,XEL_TSR_XMIT_IE_MASK|XEL_TSR_XMIT_BUSY_MASK,0xf);
+  axi_write(pp, XEL_TPLR_OFFSET,length);
+  axi_write(pp, XEL_TSR_OFFSET,XEL_TSR_XMIT_BUSY_MASK);
  do
    {
      rslt = axi_read(pp, XEL_TSR_OFFSET);
@@ -730,96 +685,104 @@ static void lite_xmit(int pp, int length)
      printf("TX Status = %x\n", rslt);
 #endif
    }
- while (rslt == (XEL_TSR_XMIT_IE_MASK|XEL_TSR_XMIT_BUSY_MASK));
- rslt &= ~XEL_TSR_XMIT_ACTIVE_MASK;
- axi_write(pp, XEL_TSR_OFFSET, rslt, 0xf);
+ while (rslt == XEL_TSR_XMIT_BUSY_MASK);
 }
 
 static void eth_dummy(int pp)
 {
-  axi_write(pp, 0x00000000,0xffffffff,0xf);
-  axi_write(pp, 0x00000004,0xffffffff,0xf);
-  axi_write(pp, 0x00000008,0xffffffff,0xf);
-  axi_write(pp, 0x0000000c,0x11111111,0xf);
-  axi_write(pp, 0x00000010,0x22222222,0xf);
-  axi_write(pp, 0x00000014,0x33333333,0xf);
+  axi_write(pp, 0x00000000,0xffffffff);
+  axi_write(pp, 0x00000004,0xffffffff);
+  axi_write(pp, 0x00000008,0xffffffff);
+  axi_write(pp, 0x0000000c,0x11111111);
+  axi_write(pp, 0x00000010,0x22222222);
+  axi_write(pp, 0x00000014,0x33333333);
   axi_read(pp, 0x0000001c);
-  axi_write(pp, 0x00000020,0x55555555,0xf);
+  axi_write(pp, 0x00000020,0x55555555);
   lite_xmit(pp, 0x14);
 }
 
 static void eth_poll(int pp)
 {
-  int i, rslt, lenmask, proto_type, length;
-  lenmask = axi_read(pp, XEL_RSR_OFFSET);
-  //printf("RX Status = %x\n", lenmask);
-  /* Check if there is Rx Data available */
-  if (lenmask & XEL_RSR_RECV_DONE_MASK)
+  proto_t proto = unknown_p;
+  int i, rslt, proto_type, length = 0;
+  if (axi_read(0, XEL_RSR_OFFSET) & XEL_RSR_RECV_DONE_MASK)
     {
-      int header = axi_read(pp, XEL_HEADER_OFFSET + XEL_RXBUFF_OFFSET);
+    int header = axi_read(pp, XEL_HEADER_OFFSET + XEL_RXBUFF_OFFSET);
 #ifdef VERBOSE
-      printf("header = %x\n", header);
+    printf("header = %x\n", header);
 #endif
-      /* Get the protocol type of the ethernet frame that arrived */
-      proto_type = ntohs(header) & XEL_RPLR_LENGTH_MASK;
-      
+    /* Get the protocol type of the ethernet frame that arrived */
+    proto_type = ntohs(header) & XEL_RPLR_LENGTH_MASK;
 #ifdef VERBOSE
-      printf("proto_type = %x\n", proto_type);
+    printf("proto_type = %x\n", proto_type);
 #endif
-      /* Check if received ethernet frame is a raw ethernet frame
-       * or an IP packet or an ARP packet */
-      if (proto_type > ETH_DATA_LEN) {
+    /* Check if received ethernet frame is a raw ethernet frame
+     * or an IP packet or an ARP packet */
         
-        if (proto_type == ETH_P_IP) {
+    switch (proto_type)
+      {
+      case ETH_P_IP:
+        proto = ip_p;
 #ifdef VERBOSE
-          printf("proto = IP\n");
+        printf("proto = IP\n");
 #endif
-          length = ((ntohl(axi_read(pp, 
-                                    XEL_HEADER_IP_LENGTH_OFFSET +
-                                    XEL_RXBUFF_OFFSET)) >>
-                     XEL_HEADER_SHIFT) &
-                    XEL_RPLR_LENGTH_MASK);
-          length = min(length, ETH_DATA_LEN);
-          length += ETH_HLEN + ETH_FCS_LEN;
-          copyin_pkt(pp, length);
-          process_my_packet(pp, length, uip_buf);
-          
-        } else if (proto_type == ETH_P_ARP)
+        length = ((ntohl(axi_read(pp, 
+                                  XEL_HEADER_IP_LENGTH_OFFSET +
+                                  XEL_RXBUFF_OFFSET)) >>
+                   XEL_HEADER_SHIFT) &
+                  XEL_RPLR_LENGTH_MASK);
+        length = min(length, ETH_DATA_LEN);
+        length += ETH_HLEN + ETH_FCS_LEN;
+        break;
+      case ETH_P_ARP:
+        proto = arp_p;
+#ifdef VERBOSE
+        printf("proto = ARP\n");
+#endif
+        length = XEL_ARP_PACKET_SIZE + ETH_HLEN + ETH_FCS_LEN;
+        break;
+      default:
+        if (proto_type > ETH_DATA_LEN)
           {
-            printf("proto = ARP\n");
-            length = XEL_ARP_PACKET_SIZE + ETH_HLEN + ETH_FCS_LEN;
-            copyin_pkt(pp, length);
-            uip_arp_arpin();
-            /* If the above function invocation resulted in data that
-               should be sent out on the network, the global variable
-               uip_len is set to a value > 0. */
-            if(uip_len > 0) {
-              printf("sending ARP reply (length = %d)\n", uip_len);
-              lite_copyout(pp, uip_len);
-              lite_xmit(pp, uip_len);
-            }
-          }
-        else
-          {
+            proto = user_p;
             /* Field contains type other than IP or ARP, use max
              * frame size and let user parse it */
             length = ETH_FRAME_LEN + ETH_FCS_LEN;
-            copyin_pkt(pp, length);
-            process_my_packet(pp, length, uip_buf);
           }
-      } else
-        {
-          printf("proto = raw ethernet frame\n");
-          /* Use the length in the frame, plus the header and trailer */
-          length = proto_type + ETH_HLEN + ETH_FCS_LEN;
-          copyin_pkt(pp, length);
-          process_my_packet(pp, length, uip_buf);
-        }
+        else
+          {
+            proto = raw_p;
 #ifdef VERBOSE
-      printf("length = %d\n", length);
+            printf("proto = raw ethernet frame\n");
 #endif
-      axi_write(pp, XEL_RSR_OFFSET, lenmask & ~XEL_RSR_RECV_DONE_MASK, 0xf);
+            /* Use the length in the frame, plus the header and trailer */
+            length = proto_type + ETH_HLEN + ETH_FCS_LEN;
+          }
+        break;
+      }
+    if (length > 0)
+      {
+#ifdef VERBOSE
+        printf("length = %d\n", length);
+#endif
+        copyin_pkt(pp, length, proto);
+      }
+    axi_write(pp, XEL_RSR_OFFSET, XEL_RSR_RECV_IE_MASK);
+    axi_write(0, XEL_GIER_OFFSET, XEL_GIER_GIE_MASK);
     }
+}
+
+void arp_reply(int pp)
+{
+  uip_arp_arpin();
+  /* If the above function invocation resulted in data that
+     should be sent out on the network, the global variable
+     uip_len is set to a value > 0. */
+  if(uip_len > 0) {
+    printf("sending ARP reply (length = %d)\n", uip_len);
+    lite_copyout(pp, uip_len);
+    lite_xmit(pp, uip_len);
+  }
 }
 
 extern in_addr_t inet_addr (const char *__cp) __attribute__ ((__nothrow__ , __leaf__));
@@ -1319,11 +1282,57 @@ static u_int16_t peer_port;
 static u_char peer_addr[6];
 static uint64_t maskarray[MAX_FILE_SIZE/CHUNK_SIZE/64];
 
+enum {uart_irq = 1,
+      spi_irq = 2,
+      eth_irq = 4,
+      phy_irq = 8,
+      dma_irq = 16,
+      gpio_irq = 32};
+
+void external_interrupt(void)
+{
+  int handled = 0;
+#ifdef VERBOSE
+  printf("Hello external interrupt! "__TIMESTAMP__"\n");
+#endif  
+  if (axi_read(0, XEL_RSR_OFFSET) & XEL_RSR_RECV_DONE_MASK)
+    {
+      printf("Ethernet interrupt ping\n");
+      eth_poll(0);
+      handled = 1;
+    }
+  if (axi_read(1, XEL_RSR_OFFSET) & XEL_RSR_RECV_DONE_MASK)
+    {
+      printf("Ethernet interrupt pong\n");
+      eth_poll(1);
+      handled = 1;
+    }
+#if 0  
+  if (XEL_TSR_XMIT_BUSY_MASK & ~axi_read(0, XEL_TSR_OFFSET))
+    {
+      axi_write(0, XEL_TSR_OFFSET, 0);
+      handled = 1;
+    }
+#endif  
+  if (uart_check_read_irq())
+    {
+      int rslt = uart_read_irq();
+      printf("uart interrupt read %x (%c)\n", rslt, rslt);
+      handled = 1;
+    }
+  if (!handled)
+    {
+      printf("unhandled interrupt!\n");
+    }
+}
+
 int main() {
-  int cnt = 1000000;
+  enum {scale=262144};
+  int cnt = scale;
   uip_ipaddr_t addr;
   uart_init();
-  printf("Hello Ethernet!\n");
+  printf("Hello LowRISC! "__TIMESTAMP__"\n");
+  ringbuf = (inqueue_t *)sbrk(sizeof(inqueue_t)*queuelen);
   memset(maskarray, 0, sizeof(maskarray));
   
   mac_addr.addr[0] = (uint8_t)0x00;
@@ -1355,14 +1364,49 @@ int main() {
   memset(peer_addr, -1, sizeof(peer_addr));
   peer_port = PORT;
   
+  set_csr(mstatus, MSTATUS_MIE|MSTATUS_HIE);
+  set_csr(mie, ~(1 << IRQ_M_TIMER));
+
+  uart_enable_read_irq();
+  axi_write(0, XEL_GIER_OFFSET, XEL_GIER_GIE_MASK);
+
+  eth_poll(0);
+  eth_poll(1);
+  
   do {
-    if (++cnt >= 1000000)
+    if (++cnt % scale == 0)
       {
-	printf("peer port %d\n", peer_port);
-	raw_udp_main(cnt, peer_port, peer_addr, maskarray, sizeof(maskarray));
-	cnt = 0;
+        int pp = cnt / scale;
+	printf("Count %d\n", pp);
+	raw_udp_main(pp, peer_port, peer_addr, maskarray, sizeof(maskarray));
+        if (axi_read(pp, XEL_RSR_OFFSET) & XEL_RSR_RECV_DONE_MASK)
+          {
+#ifdef VERBOSE
+            printf("Ethernet ping/pong buffer pending\n");
+#else
+            printf("#");
+#endif            
+          }
+        if (head != tail)
+          {
+            u_char *alloc = ringbuf[tail].alloc;
+            int length = ringbuf[tail].length;
+            proto_t proto = ringbuf[tail].proto;
+            printf("head = %d, tail = %d\n", head, tail);
+            tail = (tail + 1) % queuelen;
+            switch(proto)
+              {
+              case arp_p:
+                memcpy(uip_buf, alloc, length);
+                uip_len = length;
+                arp_reply(cnt);
+                break;
+              default:
+                process_my_packet(cnt, length, alloc);
+                break;
+              }
+          }
       }
-    eth_poll(cnt);
   } while (1);
 }
 

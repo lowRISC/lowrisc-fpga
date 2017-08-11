@@ -47,7 +47,7 @@
 #define XEL_MDIOCTRL_MDIOEN_MASK  0x00000008    /* MDIO Enable */
 
 /* Global Interrupt Enable Register (GIER) Bit Masks */
-#define XEL_GIER_GIE_MASK       0x80000000      /* Global Enable */
+#define XEL_GIER_GIE_MASK        0x80000000      /* Global Enable */
 
 /* Transmit Status Register (TSR) Bit Masks */
 #define XEL_TSR_XMIT_BUSY_MASK   0x00000001     /* Tx complete */

@@ -9,5 +9,6 @@
 extern volatile uint64_t * get_bram_base();
 extern volatile uint64_t * get_ddr_base();
 extern volatile uint64_t * get_flash_base();
+extern volatile uint32_t * get_gpio_base();
 
 #endif
