@@ -17,7 +17,7 @@ static int axi_read(size_t addr)
   return rslt;
 }
 
-static void axi_write(size_t addr, int data, int strb)
+static void axi_write(size_t addr, int data)
 {
   int rslt;
   // printf("axi_write(0x%x,0x%x);\n", addr, data);
@@ -30,21 +30,25 @@ static void axi_write(size_t addr, int data, int strb)
 static void eth_test(void)
 {
   int length = 0x14;
-  axi_write(0x800, 0x5E00FACE, 0xf);
-  axi_write(0x804, 0x10000, 0xf);
-  axi_write(0x1000, 0xffffffff, 0xf);
-  axi_write(0x1004, 0xffffffff, 0xf);
-  axi_write(0x1008, 0xffffffff, 0xf);
-  axi_write(0x100C, 0x11111111, 0xf);
-  axi_write(0x1010, 0x22222222, 0xf);
-  axi_write(0x1014, 0x33333333, 0xf);  
+  uint64_t macaddr = 0x5E00FACE;
+  axi_write(MACLO_OFFSET, (macaddr&0xFFFFFFFF));
+  axi_write(MACHI_OFFSET, MACHI_COOKED_MASK|(macaddr>>32));
+  axi_write(TXBUFF_OFFSET+0x00, 0xffffffff);
+  axi_write(TXBUFF_OFFSET+0x04, 0xffffffff);
+  axi_write(TXBUFF_OFFSET+0x08, 0xffffffff);
+  axi_write(TXBUFF_OFFSET+0x0C, 0x11111111);
+  axi_write(TXBUFF_OFFSET+0x10, 0x22222222);
+  axi_write(TXBUFF_OFFSET+0x14, 0x33333333);  
 
-  axi_write(0x808, length, 0xf);
+  axi_write(TPLR_OFFSET, length);
+  printf("MACLO = %x\n", axi_read(MACLO_OFFSET));
+  printf("MACHI = %x\n", axi_read(MACHI_OFFSET));
+
 }
 
 int main() {
   uart_init();
-  // printf("Hello World from Ethernet! "__TIMESTAMP__"\n");
   eth_test();
+  printf("Hello World from Ethernet! "__TIMESTAMP__"\n");
 }
 

@@ -1,0 +1,191 @@
+/*
+ * Copyright (c) 2016, Dr. Ralf Schlatterbeck Open Source Consulting
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. Neither the name of the Institute nor the names of its contributors
+ *    may be used to endorse or promote products derived from this software
+ *    without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE INSTITUTE AND CONTRIBUTORS ``AS IS'' AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED.  IN NO EVENT SHALL THE INSTITUTE OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+ * SUCH DAMAGE.
+ *
+ * This file is part of the Contiki operating system.
+ *
+ * @(#)$$
+ */
+
+/**
+ * \file
+ *         Configuration for Lowrisc on icoboard
+ * \author
+ *         Ralf Schlatterbeck <rsc@runtux.com>
+ */
+
+#ifndef CONTIKI_CONF_H_
+#define CONTIKI_CONF_H_
+
+#include "lowriscdef.h"
+
+/* Platform name, type, and MCU clock rate */
+#define PLATFORM_NAME  "Lowrisc-nexys4ddr"
+#define PLATFORM_TYPE  LOWRISC
+#ifndef F_CPU
+#define F_CPU          (25000000)
+#endif
+
+ /* Clock ticks per second, our timer runs with cpu freq */
+#define CLOCK_CONF_SECOND ((long long)F_CPU)
+
+typedef uint64_t clock_time_t;
+#define CLOCK_LT(a,b)  ((a)<(b))
+
+/* RADIOSTATS is used in clock.c and the webserver cgi to report radio usage */
+/* It has less overhead than ENERGEST */
+#define RADIOSTATS                1
+
+/* More extensive stats, via main loop printfs or webserver status pages */
+#define ENERGEST_CONF_ON          1
+
+/* Packet statistics */
+typedef unsigned short uip_stats_t;
+#define UIP_STATISTICS            0
+
+/* Network setup */
+/* TX routine passes the cca/ack result in the return parameter */
+#define RDC_CONF_HARDWARE_ACK    1
+/* TX routine does automatic cca and optional backoffs */
+#define RDC_CONF_HARDWARE_CSMA   1
+/* Allow MCU sleeping between channel checks */
+#define RDC_CONF_MCU_SLEEP         1
+
+#if NETSTACK_CONF_WITH_IPV6
+#define LINKADDR_CONF_SIZE        8
+#define UIP_CONF_ICMP6            1
+#define UIP_CONF_UDP              1
+#define UIP_CONF_TCP              1
+#define NETSTACK_CONF_NETWORK     sicslowpan_driver
+#define SICSLOWPAN_CONF_COMPRESSION SICSLOWPAN_COMPRESSION_HC06
+#else
+/* ip4 should build but is largely untested */
+#define LINKADDR_CONF_SIZE        2
+#define NETSTACK_CONF_NETWORK     rime_driver
+#endif
+
+#define UIP_CONF_LL_802154        1
+#define UIP_CONF_LLH_LEN          0
+
+/* 10 bytes per stateful address context - see sicslowpan.c */
+/* Default is 1 context with prefix aaaa::/64 */
+/* These must agree with all the other nodes or there will be a failure to communicate! */
+#define SICSLOWPAN_CONF_MAX_ADDR_CONTEXTS 1
+#define SICSLOWPAN_CONF_ADDR_CONTEXT_0 {addr_contexts[0].prefix[0]=0xaa;addr_contexts[0].prefix[1]=0xaa;}
+#define SICSLOWPAN_CONF_ADDR_CONTEXT_1 {addr_contexts[1].prefix[0]=0xbb;addr_contexts[1].prefix[1]=0xbb;}
+#define SICSLOWPAN_CONF_ADDR_CONTEXT_2 {addr_contexts[2].prefix[0]=0x20;addr_contexts[2].prefix[1]=0x01;addr_contexts[2].prefix[2]=0x49;addr_contexts[2].prefix[3]=0x78,addr_contexts[2].prefix[4]=0x1d;addr_contexts[2].prefix[5]=0xb1;}
+
+/* Take the default TCP maximum segment size for efficiency and simpler wireshark captures */
+/* Use this to prevent 6LowPAN fragmentation (whether or not fragmentation is enabled) */
+//#define UIP_CONF_TCP_MSS       48
+
+#define UIP_CONF_IP_FORWARD      0
+#define UIP_CONF_FWCACHE_SIZE    0
+
+#define UIP_CONF_IPV6_CHECKS     1
+#define UIP_CONF_IPV6_QUEUE_PKT  1
+#define UIP_CONF_IPV6_REASSEMBLY 0
+
+#define UIP_CONF_UDP_CHECKSUMS   1
+#define UIP_CONF_TCP_SPLIT       1
+#define UIP_CONF_DHCP_LIGHT      1
+
+
+#if 1 /* No radio cycling */
+
+#define NETSTACK_CONF_MAC         nullmac_driver
+#define NETSTACK_CONF_RDC         sicslowmac_driver
+#define NETSTACK_CONF_FRAMER      framer_802154
+#define CC2520_CONF_AUTOACK        1
+#define SICSLOWPAN_CONF_FRAG      1
+/* Most browsers reissue GETs after 3 seconds which stops fragment reassembly so a longer MAXAGE does no good */
+#define SICSLOWPAN_CONF_MAXAGE    3
+/* How long to wait before terminating an idle TCP connection. Smaller to allow faster sleep. Default is 120 seconds */
+/* If wait is too short the connection can be reset as a result of multiple fragment reassembly timeouts */
+#define UIP_CONF_WAIT_TIMEOUT    20
+/* 211 bytes per queue buffer */
+#define QUEUEBUF_CONF_NUM         8
+/* 54 bytes per queue ref buffer */
+#define QUEUEBUF_CONF_REF_NUM     2
+/* Allocate remaining RAM as desired */
+/* 30 bytes per TCP connection */
+/* 6LoWPAN does not do well with concurrent TCP streams, as new browser GETs collide with packets coming */
+/* from previous GETs, causing decreased throughput, retransmissions, and timeouts. Increase to study this. */
+/* ACKs to other ports become interleaved with computation-intensive GETs, so ACKs are particularly missed. */
+/* Increasing the number of packet receive buffers in RAM helps to keep ACKs from being lost */
+#define UIP_CONF_MAX_CONNECTIONS  4
+/* 2 bytes per TCP listening port */
+#define UIP_CONF_MAX_LISTENPORTS  4
+/* 25 bytes per UDP connection */
+#define UIP_CONF_UDP_CONNS       10
+/* See uip-ds6.h */
+#define NBR_TABLE_CONF_MAX_NEIGHBORS      20
+#define UIP_CONF_DS6_DEFRT_NBU    2
+#define UIP_CONF_DS6_PREFIX_NBU   3
+#define UIP_CONF_MAX_ROUTES    20
+#define UIP_CONF_DS6_ADDR_NBU     3
+#define UIP_CONF_DS6_MADDR_NBU    0
+#define UIP_CONF_DS6_AADDR_NBU    0
+
+#else
+#error Network configuration not specified!
+#endif   /* Network setup */
+
+/* ************************************************************************** */
+//#pragma mark RPL Settings
+/* ************************************************************************** */
+#if UIP_CONF_IPV6_RPL
+
+#define UIP_CONF_ROUTER                 1
+#define UIP_CONF_ND6_SEND_RA		    0
+#define UIP_CONF_ND6_REACHABLE_TIME     600000
+#define UIP_CONF_ND6_RETRANS_TIMER      10000
+
+/* For slow slip connections, to prevent buffer overruns */
+//#define UIP_CONF_RECEIVE_WINDOW 300
+#undef UIP_CONF_FWCACHE_SIZE
+#define UIP_CONF_FWCACHE_SIZE    30
+#define UIP_CONF_BROADCAST       1
+#define UIP_ARCH_IPCHKSUM        1
+#define UIP_CONF_PINGADDRCONF    0
+#define UIP_CONF_LOGGING         0
+
+#endif /* RPL */
+
+#define CCIF
+#define CLIF
+#ifndef CC_CONF_INLINE
+#define CC_CONF_INLINE inline
+#endif
+
+/* include the project config */
+/* PROJECT_CONF_H might be defined in the project Makefile */
+#ifdef PROJECT_CONF_H
+#include PROJECT_CONF_H
+#endif
+
+#endif /* CONTIKI_CONF_H_ */
