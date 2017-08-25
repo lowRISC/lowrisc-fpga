@@ -43,18 +43,18 @@
 #define MDIOCTRL_MDIOIN_MASK  0x00000008    /* MDIO Input Mask */
 
 /* Transmit Status Register (TPLR) Bit Masks */
-#define TPLR_FRAME_ADDR_MASK  0xFFFF0000     /* Tx complete */
-#define TPLR_PACKET_LEN_MASK  0x0000FFFF     /* Tx packet length */
+#define TPLR_FRAME_ADDR_MASK  0x0FFF0000     /* Tx complete */
+#define TPLR_PACKET_LEN_MASK  0x00000FFF     /* Tx packet length */
+#define TPLR_BUSY_MASK        0x80000000     /* Tx busy mask */
 
 /* Receive Status Register (RSR) */
 #define RSR_RECV_DONE_MASK    0x00000001      /* Rx complete */
 #define RSR_RECV_ERR_MASK     0x00000002      /* Rx fcs_err bit */
 
-/* Transmit Packet Length Register (TPLR) */
-#define TPLR_LENGTH_MASK    0x0000FFFF      /* Tx packet length */
-
 /* Receive Packet Length Register (RPLR) */
-#define RPLR_LENGTH_MASK    0x0000FFFF      /* Rx packet length */
+#define RPLR_LENGTH_MASK      0x0FFF0000      /* Rx packet length */
+#define RPLR_ERROR_MASK       0x40000000      /* Rx error mask */
+#define RPLR_FCS_ERROR_MASK   0x80000000      /* Rx FCS error mask */
 
 /* General Ethernet Definitions */
 #define HEADER_OFFSET       12              /* Offset to length field */
