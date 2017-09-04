@@ -43,7 +43,7 @@
 #define MDIOCTRL_MDIOIN_MASK  0x00000008    /* MDIO Input Mask */
 
 /* Transmit Status Register (TPLR) Bit Masks */
-#define TPLR_FRAME_ADDR_MASK  0x0FFF0000     /* Tx complete */
+#define TPLR_FRAME_ADDR_MASK  0x0FFF0000     /* Tx frame address */
 #define TPLR_PACKET_LEN_MASK  0x00000FFF     /* Tx packet length */
 #define TPLR_BUSY_MASK        0x80000000     /* Tx busy mask */
 

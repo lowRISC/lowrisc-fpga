@@ -85,11 +85,14 @@ void old_handle_interrupt(long cause)
   external_interrupt();
 }
 
+// #define VERBOSE_INTERRUPT
+
 void handle_interrupt(long cause)
 {
+  int mip;
   char code[20];
   cause &= 0x7FFFFFFF;
-#ifdef VERBOSE
+#ifdef VERBOSE_INTERRUPT
   switch(cause)
     {
     case IRQ_S_SOFT   : strcpy(code, "IRQ_S_SOFT   "); break;
@@ -106,6 +109,9 @@ void handle_interrupt(long cause)
     default           : sprintf(code, "IRQ_%x     ", cause);
     }
  sprintf(trap_rpt_buf, "interrupt source=%s\n", code);
+ uart_send_string(trap_rpt_buf);
+ mip = read_csr(mip);
+ sprintf(trap_rpt_buf, "read_csr(mip)=%x\n", mip);
  uart_send_string(trap_rpt_buf);
 #endif
  if (cause==IRQ_HOST)

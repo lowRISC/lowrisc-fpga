@@ -53,7 +53,7 @@ int mini_printf(const char *fmt, ...);
 enum {queuelen = 1024};
 typedef enum { unknown_p, raw_p, user_p, arp_p, icmp_p, udp_p, tcp_p, ip_p } proto_t;
 
-int head, tail;
+int rxhead, rxtail, txhead, txtail;
 
 typedef struct inqueue_t {
   void *alloc;
@@ -61,11 +61,20 @@ typedef struct inqueue_t {
   int fcs;
 } inqueue_t;
 
-inqueue_t *ringbuf;
+inqueue_t *rxbuf;
+
+typedef struct outqueue_t {
+  void *alloc;
+  int len;
+} outqueue_t;
+
+outqueue_t *txbuf;
 
 volatile uint64_t * get_ddr_base() {
   return (uint64_t *)(DEV_MAP__mem__BASE);
 }
+
+#define VERBOSEXMIT
 
 static volatile unsigned int * const eth_base = (volatile unsigned int*)ETH_BASE;
 
@@ -653,8 +662,8 @@ uint32_t __bswap_32(uint32_t x)
 #   define htons(x)     __bswap_16 (x)
 
 #define min(x,y) (x) < (y) ? (x) : (y)
-#define UDPBUF ((struct uip_udpip_hdr *)&uip_buf[UIP_LLH_LEN])
-#define uip_raw ((uint32_t *)uip_buf)
+//#define UDPBUF ((struct uip_udpip_hdr *)&uip_buf[UIP_LLH_LEN])
+//#define uip_raw ((uint32_t *)uip_buf)
 
 void process_my_packet(int size, const u_char *buffer);
 void *sbrk(size_t len);
@@ -665,38 +674,38 @@ static int copyin_pkt(void)
   int fcs = axi_read(RFCS_OFFSET);
   int rplr = axi_read(RPLR_OFFSET);
   int length = (rplr & RPLR_LENGTH_MASK) >> 16;
-  if (length >= 64)
+#ifdef VERBOSEXMIT
+      printf("length = %d (rplr = %x)\n", length, rplr);
+#endif      
+  if (length >= 14)
     {
       int rnd;
       uint32_t *alloc;
-#ifdef VERBOSE
-      printf("length = %d (rplr = %x)\n", length, rplr);
-#endif      
       rnd = ((length-1|3)+1); /* round to a multiple of 4 */
       alloc = sbrk(rnd);
       for (i = 0; i < rnd/4; i++)
         {
           alloc[i] = axi_read(RXBUFF_OFFSET+(i<<2));
         }
-      ringbuf[head].fcs = fcs;
-      axi_write(RSR_OFFSET, 0); /* acknowledge */
-      ringbuf[head].rplr = rplr;
-      ringbuf[head].alloc = alloc;
-      head = (head + 1) % queuelen;
+      rxbuf[rxhead].fcs = fcs;
+      rxbuf[rxhead].rplr = rplr;
+      rxbuf[rxhead].alloc = alloc;
+      rxhead = (rxhead + 1) % queuelen;
     }
+  axi_write(RSR_OFFSET, 0); /* acknowledge */
   return length;
 }
 
-static void lite_copyout(int length)
+static void lite_queue(void *buf, int length)
 {
   int i, rslt;
-  for (i = 0; i < ((length-1|3)+1)/4; i++)
-	  {
-	    axi_write(TXBUFF_OFFSET+(i<<2), ((uint32_t *)uip_buf)[i]);
- 	  }
+  int rnd = ((length-1|3)+1);
+  uint32_t *alloc = sbrk(rnd);
+  memcpy(alloc, buf, length);
+  txbuf[txhead].alloc = alloc;
+  txbuf[txhead].len = length;
+  txhead = (txhead+1) % queuelen;
 }
-
-#define VERBOSEXMIT
 
 static void lite_xmit(int length)
 {
@@ -1110,7 +1119,7 @@ void process_my_packet(int size, const u_char *buffer)
             ++others;
             break;
     }
-    printf("TCP : %d   UDP : %d   ICMP : %d   IGMP : %d   Others : %d   Total : %d\r", tcp , udp , icmp , igmp , others , total);
+    printf("TCP : %d   UDP : %d   ICMP : %d   IGMP : %d   Others : %d   Total : %d\n", tcp , udp , icmp , igmp , others , total);
 }
 
 void print_ethernet_header(const u_char *Buffer, int Size)
@@ -1120,7 +1129,7 @@ void print_ethernet_header(const u_char *Buffer, int Size)
     printf("Ethernet Header\n");
     printf("   |-Destination Address : %x-%x-%x-%x-%x-%x\n", eth->h_dest[0] , eth->h_dest[1] , eth->h_dest[2] , eth->h_dest[3] , eth->h_dest[4] , eth->h_dest[5] );
     printf("   |-Source Address      : %x-%x-%x-%x-%x-%x\n", eth->h_source[0] , eth->h_source[1] , eth->h_source[2] , eth->h_source[3] , eth->h_source[4] , eth->h_source[5] );
-    printf("   |-Protocol            : 0x%x \n",(unsigned short)eth->h_proto);
+    printf("   |-Protocol            : 0x%x \n",ntohs((unsigned short)eth->h_proto));
 }
 
 char *inet_ntoa(struct in_addr in)
@@ -1208,10 +1217,12 @@ void print_tcp_packet(const u_char * Buffer, int Size)
 // size of DDR RAM (128M for NEXYS4-DDR) 
 #define DDR_SIZE 0x8000000
 
+enum {sizeof_maskarray=MAX_FILE_SIZE/CHUNK_SIZE/8};
+
 static int oldidx;
 static u_int16_t peer_port;
 static u_char peer_addr[6];
-static uint64_t maskarray[MAX_FILE_SIZE/CHUNK_SIZE/64];
+static uint64_t *maskarray;
 
 void external_interrupt(void)
 {
@@ -1223,7 +1234,7 @@ void external_interrupt(void)
   if (axi_read(RSR_OFFSET) & RSR_RECV_DONE_MASK)
     {
 #ifdef VERBOSE
-      printf("Ethernet interrupt ping\n");
+      printf("Ethernet interrupt\n");
 #endif  
       int length = copyin_pkt();
       handled = 1;
@@ -1263,12 +1274,13 @@ int main() {
   enum {scale=1048576};
   int cnt = scale;
   uip_ipaddr_t addr;
+  uint32_t macaddr_lo, macaddr_hi;
   uart_init();
   printf("Hello LowRISC! "__TIMESTAMP__"\n");
-  set_csr(mstatus, MSTATUS_MIE|MSTATUS_HIE);
-  set_csr(mie, ~MIP_MTIP);
-  ringbuf = (inqueue_t *)sbrk(sizeof(inqueue_t)*queuelen);
-  memset(maskarray, 0, sizeof(maskarray));
+  rxbuf = (inqueue_t *)sbrk(sizeof(inqueue_t)*queuelen);
+  txbuf = (outqueue_t *)sbrk(sizeof(outqueue_t)*queuelen);
+  maskarray = (uint64_t *)sbrk(sizeof_maskarray);
+  memset(maskarray, 0, sizeof_maskarray);
   
   mac_addr.addr[0] = (uint8_t)0x00;
   mac_addr.addr[1] = (uint8_t)0x00;
@@ -1277,7 +1289,11 @@ int main() {
   mac_addr.addr[4] = (uint8_t)0xFA;
   mac_addr.addr[5] = (uint8_t)0xCE;
 
-  eth_test();
+  memcpy (&macaddr_lo, mac_addr.addr+2, sizeof(uint32_t));
+  memcpy (&macaddr_hi, mac_addr.addr+0, sizeof(uint16_t));
+  axi_write(MACLO_OFFSET, htonl(macaddr_lo));
+  axi_write(MACHI_OFFSET, MACHI_DATA_DLY_MASK|MACHI_COOKED_MASK|htons(macaddr_hi));
+  printf("MAC = %x:%x\n", axi_read(MACHI_OFFSET)&MACHI_MACADDR_MASK, axi_read(MACLO_OFFSET));
   
   printf("MAC address = %02x:%02x:%02x:%02x:%02x:%02x.\n",
          mac_addr.addr[0],
@@ -1297,13 +1313,14 @@ int main() {
   uip_ipaddr(&addr, 255,255,255,0);
   uip_setnetmask(&addr);
   printf("Subnet Mask: %d.%d.%d.%d\n", uip_ipaddr_to_quad(&addr));
-  uip_arp_init();
   memset(peer_addr, -1, sizeof(peer_addr));
   peer_port = PORT;
   
+  printf("Enabling interrupts\n");
   set_csr(mstatus, MSTATUS_MIE|MSTATUS_HIE);
   set_csr(mie, ~(1 << IRQ_M_TIMER));
 
+  printf("Enabling UART interrupt\n");
   uart_enable_read_irq();
 
   do {
@@ -1311,91 +1328,176 @@ int main() {
       {
         int pp = cnt / scale;
 	printf("Count %d\n", pp);
-	raw_udp_main(peer_port, peer_addr, maskarray, sizeof(maskarray));
-        if (axi_read(RSR_OFFSET) & RSR_RECV_DONE_MASK)
-          {
-#ifdef VERBOSE
-            printf("Ethernet ping/pong buffer pending\n");
-#else
-            printf("#");
-#endif            
-          }
+	raw_udp_main(peer_port, peer_addr, maskarray, sizeof_maskarray);
       }
-    if (head != tail)
+    if ((txhead != txtail) && (TPLR_BUSY_MASK & ~axi_read(TPLR_OFFSET)))
+          {
+        proto_t proto;
+        uint32_t *alloc = txbuf[txtail].alloc;
+        int length = txbuf[txtail].len;
+        int i, rslt;
+        printf("TX pending\n");
+        for (i = 0; i < ((length-1|3)+1)/4; i++)
+          {
+            axi_write(TXBUFF_OFFSET+(i<<2), alloc[i]);
+          }
+        axi_write(TPLR_OFFSET,length);
+        txtail = (txtail + 1) % queuelen;
+      }
+    if (rxhead != rxtail)
       {
         proto_t proto;
-        uint32_t *alloc = ringbuf[tail].alloc;
-        int rplr = ringbuf[tail].rplr;
+        uint32_t *alloc = rxbuf[rxtail].alloc;
+        int rplr = rxbuf[rxtail].rplr;
         int length, elength = ((rplr & RPLR_LENGTH_MASK) >> 16) - 4;
-        int header = alloc[HEADER_OFFSET >> 2];
-        int proto_type = ntohs(header) & 0xFFFF;
+        int rxheader = alloc[HEADER_OFFSET >> 2];
+        int proto_type = ntohs(rxheader) & 0xFFFF;
         printf("proto_type = 0x%x\n", proto_type);
-        printf("head = %d, tail = %d\n", head, tail);
+        printf("rxhead = %d, rxtail = %d\n", rxhead, rxtail);
         printf("elength = %d (rplr = %x)\n", elength, rplr);
-        printf("RX FCS = %x\n", ringbuf[tail].fcs);
-        memcpy(uip_buf, alloc, elength);
-        uip_len = elength;
-#ifdef VERBOSEXMIT
-        print_ethernet_header(uip_buf, ETH_HLEN);
-#endif             
-    switch (proto_type)
-      {
-      case ETH_P_IP:
-        proto = ip_p;
-#ifdef VERBOSEXMIT
-        printf("proto = IP\n");
-#endif
-        length = ntohl(alloc[HEADER_IP_LENGTH_OFFSET] & RPLR_LENGTH_MASK);
-        length = min(length, ETH_DATA_LEN);
-        length += ETH_HLEN + ETH_FCS_LEN;
-        break;
-      case ETH_P_ARP:
-        proto = arp_p;
-#ifdef VERBOSEXMIT
-        printf("proto = ARP\n");
-#endif
-        length = ARP_PACKET_SIZE + ETH_HLEN + ETH_FCS_LEN;
-        break;
-      default:
-        if (proto_type > ETH_DATA_LEN)
+        printf("RX FCS = %x\n", rxbuf[rxtail].fcs);
+        switch (proto_type)
           {
-            proto = user_p;
-            /* Field contains type other than IP or ARP, use max
-             * frame size and let user parse it */
-            length = elength;
-          }
-        else
-          {
-            proto = raw_p;
-#ifdef VERBOSEXMIT
-            printf("proto = raw ethernet frame\n");
-#endif
-            /* Use the length in the frame, plus the header and trailer */
-            length = proto_type + ETH_HLEN + ETH_FCS_LEN;
-          }
-        break;
-      }
-    if (length > 0)
-      {
-#ifdef VERBOSEXMIT
-        printf("length = %d\n", length);
-#endif
-      }
-    process_my_packet(length, uip_buf);
-    tail = (tail + 1) % queuelen;
-    if (proto_type == ETH_P_ARP)
-          {
-            printf("proto = ARP\n");
-            uip_arp_arpin();
-            /* If the above function invocation resulted in data that
-               should be sent out on the network, the global variable
-               uip_len is set to a value > 0. */
-            if(uip_len > 0) {
-              printf("sending ARP reply (length = %d)\n", uip_len);
-              lite_copyout(uip_len);
-              lite_xmit(uip_len);
+          case ETH_P_IP:
+            {
+              struct ethip_hdr {
+                struct uip_eth_hdr ethhdr;
+                /* IP header. */
+                uint8_t vhl,
+                  tos,
+                  len[2],
+                  ipid[2],
+                  ipoffset[2],
+                  ttl,
+                  proto;
+                uint16_t ipchksum;
+                uip_ipaddr_t srcipaddr, destipaddr;
+                uint8_t body[];
+              } *BUF = ((struct ethip_hdr *)alloc);
+              uip_ipaddr_t addr = BUF->srcipaddr;
+              printf("proto = IP\n");
+              printf("Source IP Address:  %d.%d.%d.%d\n", uip_ipaddr_to_quad(&(BUF->srcipaddr)));
+              printf("Destination IP Address:  %d.%d.%d.%d\n", uip_ipaddr_to_quad(&(BUF->destipaddr)));
+              switch (BUF->proto)
+                {
+                case IPPROTO_ICMP:
+                  {
+                    struct icmphdr
+                    {
+                      uint8_t type;		/* message type */
+                      uint8_t code;		/* type sub-code */
+                      uint16_t checksum;
+                      union
+                      {
+                        struct
+                        {
+                          uint16_t	id;
+                          uint16_t	sequence;
+                        } echo;			/* echo datagram */
+                        uint32_t	gateway;	/* gateway address */
+                        struct
+                        {
+                          uint16_t	unused;
+                          uint16_t	mtu;
+                        } frag;			/* path mtu discovery */
+                      } un;
+                    } *icmp_hdr = (struct icmphdr *)&(BUF->body);
+                  printf("IP proto = ICMP\n");
+                  if (uip_ipaddr_cmp(&BUF->destipaddr, &uip_hostaddr))
+                    {
+                      int len = sizeof(struct ethip_hdr)+sizeof(struct icmphdr);
+                      memcpy(BUF->ethhdr.dest.addr, BUF->ethhdr.src.addr, 6);
+                      memcpy(BUF->ethhdr.src.addr, uip_lladdr.addr, 6);
+                
+                      uip_ipaddr_copy(&BUF->destipaddr, &BUF->srcipaddr);
+                      uip_ipaddr_copy(&BUF->srcipaddr, &uip_hostaddr);
+                
+                      printf("sending ICMP reply (length = %d)\n", len);
+                      lite_queue(alloc, len);
+                    }
+                  }
+                  break;
+                case    IPPROTO_IGMP: printf("IP Proto = IGMP\n"); break;
+                case    IPPROTO_IPIP: printf("IP Proto = IPIP\n"); break;
+                case    IPPROTO_TCP: printf("IP Proto = TCP\n"); break;
+                case    IPPROTO_EGP: printf("IP Proto = EGP\n"); break;
+                case    IPPROTO_PUP: printf("IP Proto = PUP\n"); break;
+                case    IPPROTO_UDP:
+                  {
+                    struct udphdr {
+                      uint16_t	uh_sport;		/* source port */
+                      uint16_t	uh_dport;		/* destination port */
+                      uint16_t	uh_ulen;		/* udp length */
+                      uint16_t	uh_sum;			/* udp checksum */
+                    } *udp_hdr = (struct udphdr *)&(BUF->body);
+
+                    printf("IP Proto = UDP, source port = %d, dest port = %d, length = %d\n",
+                           ntohs(udp_hdr->uh_sport),
+                           ntohs(udp_hdr->uh_dport),
+                           ntohs(udp_hdr->uh_ulen));
+                  }
+                  break;
+                case    IPPROTO_IDP: printf("IP Proto = IDP\n"); break;
+                case    IPPROTO_TP: printf("IP Proto = TP\n"); break;
+                case    IPPROTO_DCCP: printf("IP Proto = DCCP\n"); break;
+                case    IPPROTO_IPV6: printf("IP Proto = IPV6\n"); break;
+                case    IPPROTO_RSVP: printf("IP Proto = RSVP\n"); break;
+                case    IPPROTO_GRE: printf("IP Proto = GRE\n"); break;
+                case    IPPROTO_ESP: printf("IP Proto = ESP\n"); break;
+                case    IPPROTO_AH: printf("IP Proto = AH\n"); break;
+                case    IPPROTO_MTP: printf("IP Proto = MTP\n"); break;
+                case    IPPROTO_BEETPH: printf("IP Proto = BEETPH\n"); break;
+                case    IPPROTO_ENCAP: printf("IP Proto = ENCAP\n"); break;
+                case    IPPROTO_PIM: printf("IP Proto = PIM\n"); break;
+                case    IPPROTO_COMP: printf("IP Proto = COMP\n"); break;
+                case    IPPROTO_SCTP: printf("IP Proto = SCTP\n"); break;
+                case    IPPROTO_UDPLITE: printf("IP Proto = UDPLITE\n"); break;
+                case    IPPROTO_MPLS: printf("IP Proto = MPLS\n"); break;
+                case    IPPROTO_RAW: printf("IP Proto = RAW\n"); break;
+                default:
+                  printf("IP proto = unsupported (%x)\n", BUF->proto);
+                  break;
+                }
             }
+            break;
+          case ETH_P_ARP:
+            {
+              struct arp_hdr {
+                struct uip_eth_hdr ethhdr;
+                uint16_t hwtype;
+                uint16_t protocol;
+                uint8_t hwlen;
+                uint8_t protolen;
+                uint16_t opcode;
+                struct uip_eth_addr shwaddr;
+                uip_ipaddr_t sipaddr;
+                struct uip_eth_addr dhwaddr;
+                uip_ipaddr_t dipaddr;
+              } *BUF = ((struct arp_hdr *)alloc);
+              printf("proto = ARP\n");
+              if(uip_ipaddr_cmp(&BUF->dipaddr, &uip_hostaddr)) {
+                int len = sizeof(struct arp_hdr);
+                BUF->opcode = UIP_HTONS(2);
+                
+                memcpy(BUF->dhwaddr.addr, BUF->shwaddr.addr, 6);
+                memcpy(BUF->shwaddr.addr, uip_lladdr.addr, 6);
+                memcpy(BUF->ethhdr.src.addr, uip_lladdr.addr, 6);
+                memcpy(BUF->ethhdr.dest.addr, BUF->dhwaddr.addr, 6);
+                
+                uip_ipaddr_copy(&BUF->dipaddr, &BUF->sipaddr);
+                uip_ipaddr_copy(&BUF->sipaddr, &uip_hostaddr);
+                
+                BUF->ethhdr.type = UIP_HTONS(UIP_ETHTYPE_ARP);
+                
+                printf("sending ARP reply (length = %d)\n", len);
+                lite_queue(alloc, len);
+              }
+            }
+            break;
+          default:
+            break;
           }
+        rxtail = (rxtail + 1) % queuelen;
       }
   } while (1);
 }
@@ -1455,14 +1557,14 @@ void process_udp_packet(const u_char *Buffer, int Size)
 	    {
               oldidx = 0;
 	      printf("Clear blocks requested\n");
-	      memset(maskarray, 0, sizeof(maskarray));
+	      memset(maskarray, 0, sizeof_maskarray);
 	      break;
 	    }
 	  case 0xFFFD:
 	    {
 	      printf("Report blocks requested\n");
               //	      memcpy(peer_addr, ethh->h_source, 6);
-	      raw_udp_main(peer_port, peer_addr, maskarray, sizeof(maskarray));
+	      raw_udp_main(peer_port, peer_addr, maskarray, sizeof_maskarray);
 	      break;
 	    }
 	  default:
@@ -1478,7 +1580,7 @@ void process_udp_packet(const u_char *Buffer, int Size)
 	      else
 		printf("Data Payload index %d out of range\n", idx);
               //	        memcpy(peer_addr, ethh->h_source, 6);
-              raw_udp_main(peer_port, peer_addr, maskarray, sizeof(maskarray));
+              raw_udp_main(peer_port, peer_addr, maskarray, sizeof_maskarray);
 #ifdef VERBOSE
               printf("Data Payload index %d\n", idx);
 #else
@@ -1851,9 +1953,7 @@ int raw_udp_main(u_int16_t peer_port, const u_char raw_addr[], void *msg, int pa
     ip->check = csum((unsigned short *)uip_buf, sizeof(struct iphdr) + sizeof(struct udphdr) + payload_size);
 
     uip_len = sizeof(struct ethhdr) + sizeof(struct iphdr) + sizeof(struct udphdr) + payload_size;
-    lite_copyout(uip_len);
-    lite_xmit(uip_len);
-
+    lite_queue(uip_buf, uip_len);
     return 0;
 
     }

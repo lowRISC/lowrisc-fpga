@@ -33,7 +33,7 @@ default: all
 
 TARGETS = boot dram hello sdcard trace jump flash eth
 
-DRIVER_TARGETS = syscalls uart uip uip_arp uip-split tcpip process etimer timer mt mtarch clock elf # spi memory elf diskio ff
+DRIVER_TARGETS = syscalls uart uip process etimer timer mt mtarch clock elf # spi memory elf diskio ff uip_arp uip-split tcpip 
 
 HEADERS += $(wildcard $(DRIVER_DIR)/*.h) $(GEN_DIR)/dev_map.h
 

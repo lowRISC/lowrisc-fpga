@@ -1970,4 +1970,68 @@ uip_send(const void *data, int len)
   }
 }
 /*---------------------------------------------------------------------------*/
-/** @}*/
+static struct etimer periodic;
+
+static void
+start_periodic_tcp_timer(void)
+{
+  if(etimer_expired(&periodic)) {
+    etimer_restart(&periodic);
+  }
+}
+
+process_event_t tcpip_event;
+
+struct listenport {
+  uint16_t port;
+  struct process *p;
+};
+static struct internal_state {
+  struct listenport listenports[UIP_LISTENPORTS];
+  struct process *p;
+} s;
+
+void
+tcpip_uipcall(void)
+{
+  uip_udp_appstate_t *ts;
+
+#if UIP_UDP
+  if(uip_conn != NULL) {
+    ts = &uip_conn->appstate;
+  } else {
+    ts = &uip_udp_conn->appstate;
+  }
+#else /* UIP_UDP */
+  ts = &uip_conn->appstate;
+#endif /* UIP_UDP */
+
+#if UIP_TCP
+  {
+    unsigned char i;
+    struct listenport *l;
+
+    /* If this is a connection request for a listening port, we must
+      mark the connection with the right process ID. */
+    if(uip_connected()) {
+      l = &s.listenports[0];
+      for(i = 0; i < UIP_LISTENPORTS; ++i) {
+        if(l->port == uip_conn->lport &&
+            l->p != PROCESS_NONE) {
+          ts->p = l->p;
+          ts->state = NULL;
+          break;
+        }
+        ++l;
+      }
+
+      /* Start the periodic polling, if it isn't already active. */
+      start_periodic_tcp_timer();
+    }
+  }
+#endif /* UIP_TCP */
+
+  if(ts->p != NULL) {
+    process_post_synch(ts->p, tcpip_event, ts->state);
+  }
+}
