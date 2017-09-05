@@ -1250,25 +1250,22 @@ void external_interrupt(void)
       printf("unhandled interrupt!\n");
     }
 }
+    // Function for checksum calculation. From the RFC,
+    // the checksum algorithm is:
+    //  "The checksum field is the 16 bit one's complement of the one's
+    //  complement sum of all 16 bit words in the header.  For purposes of
+    //  computing the checksum, the value of the checksum field is zero."
 
-static void eth_test(void)
-{
-  int length = 0x14;
-  uint32_t macaddr_lo, macaddr_hi;
-  memcpy (&macaddr_lo, mac_addr.addr+2, sizeof(uint32_t));
-  memcpy (&macaddr_hi, mac_addr.addr+0, sizeof(uint16_t));
-  axi_write(MACLO_OFFSET, htonl(macaddr_lo));
-  axi_write(MACHI_OFFSET, MACHI_DATA_DLY_MASK|MACHI_COOKED_MASK|htons(macaddr_hi));
-  axi_write(TXBUFF_OFFSET+0x00, 0xffffffff);
-  axi_write(TXBUFF_OFFSET+0x04, 0xffffffff);
-  axi_write(TXBUFF_OFFSET+0x08, 0xffffffff);
-  axi_write(TXBUFF_OFFSET+0x0C, 0x11111111);
-  axi_write(TXBUFF_OFFSET+0x10, 0x22222222);
-  axi_write(TXBUFF_OFFSET+0x14, 0x33333333);  
+static unsigned short csum(unsigned short *buf, int nwords)
+    {       //
+            unsigned long sum;
+            for(sum=0; nwords>0; nwords--)
+                    sum += *buf++;
 
-  lite_xmit(length);
-  printf("MAC = %x:%x\n", axi_read(MACHI_OFFSET)&MACHI_MACADDR_MASK, axi_read(MACLO_OFFSET));
-}
+            sum = (sum >> 16) + (sum & 0xffff);
+            sum += (sum >> 16);
+            return (unsigned short)(~sum);
+    }
 
 int main() {
   enum {scale=1048576};
@@ -1289,6 +1286,8 @@ int main() {
   mac_addr.addr[4] = (uint8_t)0xFA;
   mac_addr.addr[5] = (uint8_t)0xCE;
 
+  memset(mac_addr.addr, -1, 6); // hack
+  
   memcpy (&macaddr_lo, mac_addr.addr+2, sizeof(uint32_t));
   memcpy (&macaddr_hi, mac_addr.addr+0, sizeof(uint16_t));
   axi_write(MACLO_OFFSET, htonl(macaddr_lo));
@@ -1411,7 +1410,10 @@ int main() {
                 
                       uip_ipaddr_copy(&BUF->destipaddr, &BUF->srcipaddr);
                       uip_ipaddr_copy(&BUF->srcipaddr, &uip_hostaddr);
-                
+
+                      icmp_hdr->type = 0; /* reply */
+                      icmp_hdr->checksum = 0;
+                      icmp_hdr->checksum = csum((unsigned short *)icmp_hdr, sizeof(struct icmphdr));
                       printf("sending ICMP reply (length = %d)\n", len);
                       lite_queue(alloc, len);
                     }
@@ -1883,22 +1885,6 @@ int printf (const char *fmt, ...)
 
     // ----rawudp.c------
 
-    // Function for checksum calculation. From the RFC,
-    // the checksum algorithm is:
-    //  "The checksum field is the 16 bit one's complement of the one's
-    //  complement sum of all 16 bit words in the header.  For purposes of
-    //  computing the checksum, the value of the checksum field is zero."
-
-static unsigned short csum(unsigned short *buf, int nwords)
-    {       //
-            unsigned long sum;
-            for(sum=0; nwords>0; nwords--)
-                    sum += *buf++;
-
-            sum = (sum >> 16) + (sum & 0xffff);
-            sum += (sum >> 16);
-            return (unsigned short)(~sum);
-    }
 
     // Source IP, source port, target IP, target port from the command line arguments
 
