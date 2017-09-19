@@ -21,6 +21,24 @@ FATFS FatFs;   // Work area (file system object) for logical drive
 // 4K size read burst
 #define SD_READ_SIZE 4096
 
+void external_interrupt(void)
+{
+  int handled = 0;
+#ifdef VERBOSE
+  printf("Hello external interrupt! "__TIMESTAMP__"\n");
+#endif  
+  if (uart_check_read_irq())
+    {
+      int rslt = uart_read_irq();
+      printf("uart interrupt read %x (%c)\n", rslt, rslt);
+      handled = 1;
+    }
+  if (!handled)
+    {
+      printf("unhandled interrupt!\n");
+    }
+}
+
 int main (void)
 {
   FIL fil;                // File object

@@ -68,13 +68,6 @@ void die(char *s)
     exit(1);
 }
 
-#define DEST_MAC0	0xff
-#define DEST_MAC1	0xff
-#define DEST_MAC2	0xff
-#define DEST_MAC3	0xff
-#define DEST_MAC4	0xff
-#define DEST_MAC5	0xff
-
 #define ETHER_TYPE	0x0800
 
 #define DEFAULT_IF	"eth0"
@@ -104,28 +97,26 @@ void send_message(int s, uint16_t idx)
 int recv_message(int sockfd, int typ)
 {
   int update = 0;
-  ssize_t numbytes;
+  int numbytes;
   uint8_t buf[BUF_SIZ];
   /* Header structures */
   struct ether_header *eh = (struct ether_header *) buf;
+  struct iphdr *iph = (struct iphdr *) (buf + sizeof(struct ether_header));
   struct udphdr *udph = (struct udphdr *) (buf + sizeof(struct iphdr) + sizeof(struct ether_header));
   uint8_t *payload = (buf + sizeof(struct iphdr) + sizeof(struct ether_header) + sizeof(struct udphdr));
   do {
     numbytes = recvfrom(sockfd, buf, BUF_SIZ, 0, NULL, NULL);
-    if (numbytes > sizeof(struct iphdr) + sizeof(struct ether_header) + sizeof(struct udphdr))
+    if ((numbytes > sizeof(struct iphdr) + sizeof(struct ether_header) + sizeof(struct udphdr)) &&
+        (ntohs(eh->ether_type)==ETH_P_IP) &&
+        (iph->protocol==IPPROTO_UDP))
       {
         int len = ntohs(udph->len) - sizeof(struct udphdr);
         int sport = ntohs(udph->source);
+        int dport = ntohs(udph->dest);
         /* Check the packet is for me */
-        if (eh->ether_dhost[0] == DEST_MAC0 &&
-            eh->ether_dhost[1] == DEST_MAC1 &&
-            eh->ether_dhost[2] == DEST_MAC2 &&
-            eh->ether_dhost[3] == DEST_MAC3 &&
-            eh->ether_dhost[4] == DEST_MAC4 &&
-            eh->ether_dhost[5] == DEST_MAC5 &&
-            sport == 8888) {
+          if ((sport == 8888) && (dport == 8888)) {
           /* UDP payload length */
-#if 0
+#if 1
           printf("listener: got packet %lu bytes\n", len);
 #endif          
           switch (len)
@@ -230,17 +221,6 @@ int main(int argc, char *argv[])
   
   /* Set interface to promiscuous mode - do we need to do this every time? */
   strncpy(ifopts.ifr_name, ifName, IFNAMSIZ-1);
-  ioctl(sockfd, SIOCGIFFLAGS, &ifopts);
-#if 0
-  ifopts.ifr_flags |= IFF_PROMISC;
-  ioctl(sockfd, SIOCSIFFLAGS, &ifopts);
-#endif	
-  /* Allow the socket to be reused - incase connection is closed prematurely */
-  if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &sockopt, sizeof sockopt) == -1) {
-    perror("setsockopt");
-    close(sockfd);
-    exit(EXIT_FAILURE);
-  }
   /* Bind to device */
   if (setsockopt(sockfd, SOL_SOCKET, SO_BINDTODEVICE, ifName, IFNAMSIZ-1) == -1)	{
     perror("SO_BINDTODEVICE");
@@ -281,9 +261,11 @@ int main(int argc, char *argv[])
 	      send_message(s, idx);
 	    }
 	}
-      send_message(s, 0xFFFD);
-      while (!recv_message(sockfd, sizeof(maskarray)))
-        ;
+      do {
+        send_message(s, 0xFFFD);
+        usleep(1000000);
+      }
+      while (!recv_message(sockfd, sizeof(maskarray)));
       incomplete = 0;
       for (idx = 0; idx < chunks; ++idx)
 	{
