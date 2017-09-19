@@ -55,6 +55,7 @@
 #include <elf.h>
 #include <string.h>
 #include <stdio.h>
+#include "md5.h"
 
 int load_elf(const uint8_t *elf, const uint32_t elf_size) {
   // sanity checks
@@ -72,13 +73,27 @@ int load_elf(const uint8_t *elf, const uint32_t elf_size) {
   uint32_t i;
   for(i=0; i<eh->e_phnum; i++) {
     if(ph[i].p_type == PT_LOAD && ph[i].p_memsz) { /* need to load this physical section */
+      printf("Section[%d]: ", i);
       if(ph[i].p_filesz) {                         /* has data */
-        if(elf_size < ph[i].p_offset + ph[i].p_filesz)
+	uint8_t *paddr = (uint8_t *)ph[i].p_paddr;
+	const uint8_t *elf_offset = elf + ph[i].p_offset;
+	size_t len = ph[i].p_filesz;
+	size_t extent = ph[i].p_offset + len;
+        if(elf_size < extent)
+	  {
+	    printf("len required = %lX, actual = %x\n", extent, elf_size);
           return 3;             /* internal damaged */
-        memcpy((uint8_t *)ph[i].p_paddr, elf + ph[i].p_offset, ph[i].p_filesz);
+	  }
+	printf("memcpy(%p,0x%p,0x%lx);\n", paddr, elf_offset, len);
+        memcpy(paddr, elf_offset, len);
+	hash_buf(paddr, len);
       }
       if(ph[i].p_memsz > ph[i].p_filesz) { /* zero padding */
-        memset((uint8_t *)ph[i].p_paddr + ph[i].p_filesz, 0, ph[i].p_memsz - ph[i].p_filesz);
+	uint8_t *bss = (uint8_t *)ph[i].p_paddr + ph[i].p_filesz;
+	size_t len = ph[i].p_memsz - ph[i].p_filesz;
+	printf("memset(%p,0,0x%lx);\n", bss, len);
+        memset(bss, 0, len);
+	hash_buf(bss, len);
       }
     }
   }

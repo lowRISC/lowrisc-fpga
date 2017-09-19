@@ -3,6 +3,12 @@
  *  it under the terms of the GNU General Public License as published by
  *  the Free Software Foundation, either version 3 of the License, or
  *  (at your option) any later version.
+
+ It may be useful to throttle the ethernet in conjunction with this program to
+  take into account the latency of the target processor, for example:
+
+  sudo tc qdisc add dev eth0 root tbf rate 4.0mbit latency 50ms burst 50kb mtu 10000
+
  */
 
 #include <arpa/inet.h>
@@ -24,6 +30,7 @@
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/types.h>
+#include <openssl/md5.h>
 
 int select_wait(int sockfd)
 {
@@ -78,7 +85,7 @@ void die(char *s)
 
 static uint64_t maskarray[MAX_FILE_SIZE/CHUNK_SIZE/64];
 struct sockaddr_in si_other;
-char message[BUFLEN];
+char message[BUFLEN], digest[MD5_DIGEST_LENGTH*2+1];
 
 void send_message(int s, uint16_t idx)
 {
@@ -89,10 +96,12 @@ void send_message(int s, uint16_t idx)
 	     CHUNK_SIZE+sizeof(uint16_t),
 	     0,
 	     (struct sockaddr *) &si_other,
-	     sizeof(si_other)) == -1) die("sendto()");
+	     sizeof(si_other)) == -1)
+    die("sendto()");
+  usleep(10000);
 }
 
-int recv_message(int sockfd)
+int recv_message(int sockfd, int typ)
 {
   int update = 0;
   ssize_t numbytes;
@@ -103,29 +112,55 @@ int recv_message(int sockfd)
   uint8_t *payload = (buf + sizeof(struct iphdr) + sizeof(struct ether_header) + sizeof(struct udphdr));
   do {
     numbytes = recvfrom(sockfd, buf, BUF_SIZ, 0, NULL, NULL);
-    if (numbytes > 0)
+    if (numbytes > sizeof(struct iphdr) + sizeof(struct ether_header) + sizeof(struct udphdr))
       {
-        int len;
+        int len = ntohs(udph->len) - sizeof(struct udphdr);
+        int sport = ntohs(udph->source);
         /* Check the packet is for me */
         if (eh->ether_dhost[0] == DEST_MAC0 &&
             eh->ether_dhost[1] == DEST_MAC1 &&
             eh->ether_dhost[2] == DEST_MAC2 &&
             eh->ether_dhost[3] == DEST_MAC3 &&
             eh->ether_dhost[4] == DEST_MAC4 &&
-            eh->ether_dhost[5] == DEST_MAC5) {
+            eh->ether_dhost[5] == DEST_MAC5 &&
+            sport == 8888) {
           /* UDP payload length */
-          len = ntohs(udph->len) - sizeof(struct udphdr);
 #if 0
           printf("listener: got packet %lu bytes\n", len);
 #endif          
-          if (len == sizeof(maskarray))
-            memcpy(maskarray, payload, len);
-          update = 1;
+          switch (len)
+            {
+            case sizeof(maskarray):
+              memcpy(maskarray, payload, len);
+              update = (len==typ);
+              break;
+            case MD5_DIGEST_LENGTH*2+1:
+              memcpy(digest, payload, len);
+              update = (len==typ);
+              break;
+            default:
+              printf("Don't know what to do with message of length %d\n", len);
+              break;
+            }
         }
       }
   }
-  while (numbytes > 0);
+  while ((numbytes > 0) && !update);
   return update;
+}
+
+static void md5_bin2hex(char *p, const char *cp)
+{
+  static const char *hex = "0123456789abcdef";
+  int count = 16;
+  while (count) {
+  unsigned char c = *cp++;
+
+  *p++ = hex[c >> 4];
+  *p++ = hex[c & 0xf];
+  count--;
+ }
+  *p = 0;
 }
 
 int main(int argc, char *argv[])
@@ -175,7 +210,11 @@ int main(int argc, char *argv[])
   printf("File = %s, len = %d, chunks = %d\n", argv[2], len, chunks);
   assert(chunks < 65536);
   m = (char *)mmap(NULL, len, PROT_READ, MAP_PRIVATE, fd, 0);
-  
+  unsigned char md[MD5_DIGEST_LENGTH];
+  unsigned char hex[MD5_DIGEST_LENGTH*2+1];
+  uint8_t *md5 = MD5((unsigned char *)m, chunks*CHUNK_SIZE, md);
+  md5_bin2hex(hex, md5);
+  printf("MD5 sum = %s\n", hex);
   /* Header structures */
   struct ether_header *eh = (struct ether_header *) buf;
   struct iphdr *iph = (struct iphdr *) (buf + sizeof(struct ether_header));
@@ -221,8 +260,9 @@ int main(int argc, char *argv[])
       printf("Restarting\n");
       do {
         send_message(s, 0xFFFE);
+        usleep(100000);
       }
-      while (!recv_message(sockfd));
+      while (!recv_message(sockfd, sizeof(maskarray)));
       restart = 0;
       for (i = 0; i < sizeof(maskarray)/sizeof(*maskarray); i++)
         {
@@ -232,36 +272,42 @@ int main(int argc, char *argv[])
   
   while (incomplete)
     {
+      for (idx = 0; idx < chunks; ++idx)
+	{
+	  if (!(maskarray[idx/64] & (1ULL << (idx&63))))
+	    {
+	      memcpy(message, m+idx*CHUNK_SIZE, CHUNK_SIZE);
+	      //send the message
+	      send_message(s, idx);
+	    }
+	}
+      send_message(s, 0xFFFD);
+      while (!recv_message(sockfd, sizeof(maskarray)))
+        ;
       incomplete = 0;
       for (idx = 0; idx < chunks; ++idx)
 	{
 	  if (!(maskarray[idx/64] & (1ULL << (idx&63))))
 	    {
-              int percent = idx*100/chunks;
-              if (percent > oldpercent)
-                {
-                printf(" %d%%\r", percent);
-                fflush(stdout);
-                }
-              oldpercent = percent;
 	      ++incomplete;
-	      memcpy(message, m+idx*CHUNK_SIZE, CHUNK_SIZE);
-	      //send the message
-	      send_message(s, idx);
-              if (recv_message(sockfd))
-                idx = 0;
 	    }
 	}
-      send_message(s, 0xFFFD);
-      if (!recv_message(sockfd))
-        incomplete = 1;
+      printf(" %d%%\n", 100*(chunks-incomplete)/chunks);
+      fflush(stdout);
     }
-
   do {
-       send_message(s, 0xFFFF);
-     }
-  while (!recv_message(sockfd));
-  
+    send_message(s, 0xFFFC);
+    usleep(1000000);
+  }
+  while (!recv_message(sockfd, MD5_DIGEST_LENGTH*2+1));
+  printf("Received digest = %s", digest);
+  if (!strcmp(digest, hex))
+    {
+    printf(" (OK)\n");
+    send_message(s, 0xFFFF);
+    }
+  else
+    printf(" (BAD)\n");
   close(s);
   close(sockfd);
   return ret;

@@ -35,6 +35,7 @@
 #define MACHI_LOOPBACK_MASK   0x00020000     /* Rx loopback packets */
 #define MACHI_LOOPBACK2_MASK  0x00040000     /* Rx byte loopback packets */
 #define MACHI_DATA_DLY_MASK   0x00180000     /* Rx packet data buffer alignment delay */
+#define MACHI_ALLPACKETS_MASK 0x00200000     /* Rx all packets (promiscuous mode) */
 
 /* MDIO Control Register Bit Masks */
 #define MDIOCTRL_MDIOCLK_MASK 0x00000001    /* MDIO Clock Mask */
