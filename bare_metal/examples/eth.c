@@ -322,7 +322,7 @@ int main() {
   memcpy (&macaddr_lo, mac_addr.addr+2, sizeof(uint32_t));
   memcpy (&macaddr_hi, mac_addr.addr+0, sizeof(uint16_t));
   axi_write(MACLO_OFFSET, htonl(macaddr_lo));
-  axi_write(MACHI_OFFSET, MACHI_ALLPACKETS_MASK|MACHI_DATA_DLY_MASK|MACHI_COOKED_MASK|htons(macaddr_hi));
+  axi_write(MACHI_OFFSET, MACHI_IRQ_EN|MACHI_ALLPACKETS_MASK|MACHI_DATA_DLY_MASK|MACHI_COOKED_MASK|htons(macaddr_hi));
   printf("MAC = %x:%x\n", axi_read(MACHI_OFFSET)&MACHI_MACADDR_MASK, axi_read(MACLO_OFFSET));
   
   printf("MAC address = %02x:%02x:%02x:%02x:%02x:%02x.\n",
@@ -573,7 +573,10 @@ void boot(uint8_t *boot_file_buf, uint32_t fsize)
   printf("Disabling interrupts\n");
   write_csr(mie, old_mie);
   write_csr(mstatus, old_mstatus);
- 
+  uart_disable_read_irq();
+  axi_write(MACHI_OFFSET, axi_read(MACHI_OFFSET)&~MACHI_IRQ_EN);
+  axi_write(RSR_OFFSET, 0);
+  printf("Ethernet interrupt status = %d\n", axi_read(RSR_OFFSET));
   printf("Load %d bytes to memory address %x from boot.bin of %d bytes.\n", fsize, boot_file_buf, fsize);
 
   // read elf
