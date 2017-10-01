@@ -35,10 +35,14 @@
 extern "C" {
 #endif
 
+#include <stdio.h>
+#include <stdlib.h> // for exit()
+#include <string.h> // for memset
 #include <stdarg.h>
 
 int mini_vsnprintf(char* buffer, unsigned int buffer_len, const char *fmt, va_list va);
 int mini_snprintf(char* buffer, unsigned int buffer_len, const char *fmt, ...);
+int mini_printf(const char *fmt, ...);
 
 #ifdef __cplusplus
 }
@@ -46,5 +50,6 @@ int mini_snprintf(char* buffer, unsigned int buffer_len, const char *fmt, ...);
 
 #define vsnprintf mini_vsnprintf
 #define snprintf mini_snprintf
+#define printf mini_printf
 
 #endif

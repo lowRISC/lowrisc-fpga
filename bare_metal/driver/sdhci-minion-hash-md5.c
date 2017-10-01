@@ -151,8 +151,6 @@ void md5_begin(md5_ctx_t *ctx)
  ctx->process_block = md5_process_block64;
 }
 
-enum {hash_length = 16};
-
 static void minion_bin2hex(char *p, const char *cp, int count)
 {
   static const char *hex = "0123456789abcdef";

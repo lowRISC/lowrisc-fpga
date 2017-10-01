@@ -1,6 +1,8 @@
 #ifndef MINION_HASH_MD5_H
 #define MINION_HASH_MD5_H
 
+enum {hash_length = 16};
+
 typedef struct md5_ctx_t {
  uint8_t wbuffer[64];
  void (*process_block)(struct md5_ctx_t*) ;

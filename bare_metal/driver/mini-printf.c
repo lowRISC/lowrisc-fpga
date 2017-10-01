@@ -44,6 +44,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include "mini-printf.h"
+#include "uart.h"
 
 static unsigned int
 mini_strlen(const char *s)
