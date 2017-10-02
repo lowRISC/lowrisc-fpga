@@ -1,9 +1,10 @@
 // See LICENSE for license details.
 
 #include "uart.h"
-#include "minion_lib.h"
+//#include "minion_lib.h"
 
 volatile uint32_t *uart_base_ptr = (uint32_t *)(UART_BASE);
+volatile uint32_t *hid_base_ptr = (uint32_t *)(DEV_MAP__io_ext_hid__BASE);
 
 void uart_init() {
   // set 0x0080 to UART.LCR to enable DLL and DLM write
@@ -25,8 +26,9 @@ void uart_init() {
 
 void minion_console_putchar(unsigned char ch)
 {
+#ifdef DEV_MAP__io_ext_hid__BASE
   static int addr_int = 0;
-  volatile uint32_t * const video_base = (volatile uint32_t*)(10<<20);
+  volatile uint32_t * const video_base = (volatile uint32_t*)(DEV_MAP__io_ext_hid__BASE+0x10000);
   switch (ch)
     {
     case '\b':
@@ -36,14 +38,16 @@ void minion_console_putchar(unsigned char ch)
       break;
     case '\n':
       while ((addr_int & 127) < 127)
-	queue_write(&(video_base[addr_int++]), ' ', 1);
+	video_base[15] = addr_int++;
       ++addr_int;
       break;
     default:
-      queue_write(&video_base[addr_int++], ch, 0);
+      video_base[15] = addr_int++;
+      //      video_base[addr_int++] = ch;
       break;
     }
   addr_int &= 4095;
+#endif  
 }
 
 void uart_send(uint8_t data) {
@@ -66,6 +70,7 @@ uint8_t uart_recv() {
   // wait until RBR has data
   while(! (*(uart_base_ptr + UART_LSR) & 0x01u))
     {
+#if 0
       uint32_t key;
       volatile uint32_t * const keyb_base = (volatile uint32_t*)(9<<20);
       key = queue_read(keyb_base);
@@ -77,6 +82,7 @@ uint8_t uart_recv() {
 	  if (ch == '\r') ch = '\n'; /* translate CR to LF, because nobody else will */
 	  return ch;
 	}
+#endif      
     }
   return *(uart_base_ptr + UART_RBR);
 }
