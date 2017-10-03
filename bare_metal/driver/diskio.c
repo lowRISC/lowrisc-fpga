@@ -237,13 +237,8 @@ DRESULT disk_ioctl (
 
   case GET_BLOCK_SIZE :   /* Get erase block size in unit of sector (uint32_t) */
     if (CardType & CT_SD2) {    /* SDv2? */
-      if (send_cmd(ACMD13, 0, 0) == 0) { /* Read SD status */
-        if (rcvr_datablock(csd, 16)) {              /* Read partial block */
-          queue_block_read1();
-          *(uint32_t*)buff = 16UL << (csd[10] >> 4);
-          res = RES_OK;
-        }
-      }
+      *(uint32_t*)buff = 512;
+      res = RES_OK;
     } else {                    /* SDv1 or MMCv3 */
       if ((send_cmd(CMD9, 0, 0) == 0) && rcvr_datablock(csd, 16)) {  /* Read CSD */
         if (CardType & CT_SD1) {    /* SDv1 */

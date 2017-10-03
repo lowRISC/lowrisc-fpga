@@ -1,7 +1,7 @@
 // See LICENSE for license details.
 
 #include "uart.h"
-//#include "minion_lib.h"
+extern int printf (const char *, ...);
 
 volatile uint32_t *uart_base_ptr = (uint32_t *)(UART_BASE);
 volatile uint32_t *hid_base_ptr = (uint32_t *)(DEV_MAP__io_ext_hid__BASE);
@@ -65,25 +65,33 @@ void uart_send_buf(const char *buf, const int32_t len) {
   for (i=0; i<len; i++) uart_send(buf[i]);
 }
 
+uint8_t cr2lf(uint8_t ch)
+{
+  if (ch == '\r') ch = '\n'; /* translate CR to LF, because nobody else will */
+  return ch;
+}
+
 uint8_t uart_recv() {
   // wait until RBR has data
   while(! (*(uart_base_ptr + UART_LSR) & 0x01u))
     {
-#if 0
-      uint32_t key;
-      volatile uint32_t * const keyb_base = (volatile uint32_t*)(9<<20);
-      key = queue_read(keyb_base);
+#ifdef DEV_MAP__io_ext_hid__BASE
+      volatile uint32_t * const keyb_base = (volatile uint32_t*)(DEV_MAP__io_ext_hid__BASE+0x0000);
+      uint32_t key = keyb_base[0];
       if ((1<<28) & ~key) /* FIFO not empty */
 	{
 	  int ch;
-	  queue_write(keyb_base+1, 0, 0);
-	  ch = (queue_read(keyb_base+1) >> 8) & 127; /* strip off the scan code (default ascii code is UK) */
-	  if (ch == '\r') ch = '\n'; /* translate CR to LF, because nobody else will */
-	  return ch;
+	  keyb_base[1] = 0;
+	  ch = (keyb_base[1] >> 8) & 127; /* strip off the scan code (default ascii code is UK) */
+          if (ch > 0)
+            {
+              printf("ch = %d\n", ch);
+              return cr2lf(ch);
+            }
 	}
 #endif      
     }
-  return *(uart_base_ptr + UART_RBR);
+  return cr2lf(*(uart_base_ptr + UART_RBR));
 }
 
 // IRQ triggered read

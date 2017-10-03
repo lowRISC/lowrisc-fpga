@@ -645,6 +645,7 @@ void minion_dispatch(const char *ucmd)
 	myputhex(data, 2);
 	myputchar('\n');
 	write_led(data);
+	break;
       case 'm':
 	if (mounted)
 	  myputs("already mounted\n");
@@ -683,7 +684,7 @@ void minion_dispatch(const char *ucmd)
 	    myputchar(' ');
 	    myputhex(addr, 8);
 	    myputchar(':');
-	    data = queue_read((unsigned *)addr);
+	    data = ((uint32_t *)DEV_MAP__io_ext_hid__BASE)[addr];
 	    myputhex(data, 8);
 	    myputchar('\n');
 	    addr += 4;
@@ -735,7 +736,7 @@ void minion_dispatch(const char *ucmd)
 	myputchar(',');
 	myputhex(data, 8);
 	myputchar('\n');
-	queue_write((unsigned *)addr, data, 0);
+	((uint32_t *)DEV_MAP__io_ext_hid__BASE)[addr] = data;
 	break;
       case 'q':
 	break;
@@ -749,12 +750,12 @@ int main (void)
   uart_init();
   board_mmc_power_init();  
   do {
-    if (queue_read((unsigned *)0x700000) & 1)
+    if (sd_base[31] & 1)
       {
 	uart_send_string("Jumping to DRAM because SW0 is high ..\r\n");
 	just_jump();
       }
-    if (queue_read((unsigned *)0x700000) & 2)
+    if (sd_base[31] & 2)
       {
 	uart_send_string("Booting from FLASH because SW1 is high ..\r\n");
 	boot(prepare(""));
