@@ -161,8 +161,6 @@ uint32_t sd_resp(int);
 void sd_timeout(int d_timeout);
 void sd_blksize(int d_blksize);
 void sd_blkcnt(int d_blkcnt);
-void tx_write_fifo(uint32_t data);
-uint32_t rx_read_fifo(void);
 
 void open_handle(void);
 void uart_printf(const char *fmt, ...);
@@ -184,26 +182,9 @@ volatile uint32_t *sd_base = (uint32_t *)(hid_addr + 0x00010000);
 static volatile uint32_t *sdtx_base = (uint32_t *)(hid_addr + 0x00014000);
 static volatile uint32_t *sdrx_base = (uint32_t *)(hid_addr + 0x00018000);
 
-void tx_write_fifo(uint32_t data)
-{
-  sdtx_base[0] = data;
-}
-
-void rx_write_fifo(uint32_t data)
-{
-  sdrx_base[0] = data;
-}
-
-uint32_t rx_read_fifo(void)
-{
-  return sdrx_base[0];
-}
-
 void write_led(uint32_t data)
 {
-  volatile uint32_t *led_base = sd_base+15;
-  printf("*%p = %x\n", led_base, data);
-  *led_base = data;
+  sd_base[15] = data;
 }
 
 uint32_t sd_resp(int sel)
@@ -359,9 +340,7 @@ static void minion_sdhci_read_block_pio(u8 *buf)
 	  
 	  while (len) {
 	    if (chunk == 0) {
-	      rx_write_fifo(0);
-	      scratch =  __be32_to_cpu(rx_read_fifo());
-	      i++;
+	      scratch =  __be32_to_cpu(sdrx_base[i++]);
 	      chunk = 4;
 	    }
 	    
@@ -396,7 +375,7 @@ static void minion_sdhci_write_block_pio(u8 *buf)
 {
 	unsigned long flags;
 	size_t blksize, len, chunk;
-	u32 scratch;	
+	u32 scratch, i = 0;	
 
 	blksize = 512;
 	chunk = 0;
@@ -415,7 +394,7 @@ static void minion_sdhci_write_block_pio(u8 *buf)
 			len--;
 
 			if ((chunk == 4) || ((len == 0) && (blksize == 0))) {
-				tx_write_fifo(scratch);
+				sdtx_base[i++] = scratch;
 				chunk = 0;
 				scratch = 0;
 			}
@@ -497,11 +476,6 @@ int sd_transaction_finish(void *buf, int cmd_flags)
   sd_blksize(sdhci_block_size&0xFFF);
   sd_timeout(500000);
   get_card_status(0);
-  /* drain rx fifo, if needed */
-  while (1 & ~sd_base[5])
-	{
-	  rx_write_fifo(0);
-	}
   rslt = sd_transaction_finish2(buf);
   return rslt;
 }
@@ -749,7 +723,6 @@ int sdhci_write(u8 *buf, uint32_t val, int reg)
     case SDHCI_SIGNAL_ENABLE	: sdhci_signal_enable = val; break;
     case SDHCI_PRESENT_STATE	: sdhci_present_state = val; break;
     case SDHCI_MAX_CURRENT	: sdhci_max_current = val; break;
-    case SDHCI_BUFFER           : tx_write_fifo(val); break;
     case SDHCI_SET_ACMD12_ERROR	: sdhci_set_acmd12_error = val; break;
     case SDHCI_SET_INT_ERROR	: sdhci_set_int = val; break;
     case SDHCI_HOST_VERSION	: sdhci_host_version = val; break;

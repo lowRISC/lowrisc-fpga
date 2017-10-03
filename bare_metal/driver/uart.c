@@ -78,16 +78,12 @@ uint8_t uart_recv() {
 #ifdef DEV_MAP__io_ext_hid__BASE
       volatile uint32_t * const keyb_base = (volatile uint32_t*)(DEV_MAP__io_ext_hid__BASE+0x0000);
       uint32_t key = keyb_base[0];
-      if ((1<<28) & ~key) /* FIFO not empty */
+      if ((1<<16) & ~key) /* FIFO not empty */
 	{
 	  int ch;
-	  keyb_base[1] = 0;
-	  ch = (keyb_base[1] >> 8) & 127; /* strip off the scan code (default ascii code is UK) */
-          if (ch > 0)
-            {
-              printf("ch = %d\n", ch);
-              return cr2lf(ch);
-            }
+	  *keyb_base = 0;
+	  ch = (*keyb_base >> 8) & 127; /* strip off the scan code (default ascii code is UK) */
+          return cr2lf(ch);
 	}
 #endif      
     }

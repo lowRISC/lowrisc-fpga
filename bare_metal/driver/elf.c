@@ -95,14 +95,18 @@ int load_elf(const uint8_t *elf, const uint32_t elf_size) {
 	  }
 	printf("memcpy(%p,0x%p,0x%lx);\n", paddr, elf_offset, len);
         memcpy(paddr, elf_offset, len);
-	hash_buf(paddr, len);
+#ifdef VERBOSE_MD5
+        hash_buf(paddr, len);
+#endif        
       }
       if(ph[i].p_memsz > ph[i].p_filesz) { /* zero padding */
 	uint8_t *bss = (uint8_t *)ph[i].p_paddr + ph[i].p_filesz;
 	size_t len = ph[i].p_memsz - ph[i].p_filesz;
 	printf("memset(%p,0,0x%lx);\n", bss, len);
         memset(bss, 0, len);
+#ifdef VERBOSE_MD5
 	hash_buf(bss, len);
+#endif
       }
     }
   }
