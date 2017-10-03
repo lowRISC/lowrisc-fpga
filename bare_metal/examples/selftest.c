@@ -766,3 +766,8 @@ int main (void)
   return 0;
 }
 
+void external_interrupt(void)
+{
+  int handled = 0;
+  printf("Hello external interrupt! "__TIMESTAMP__"\n");
+}

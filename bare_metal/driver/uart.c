@@ -28,7 +28,7 @@ void minion_console_putchar(unsigned char ch)
 {
 #ifdef DEV_MAP__io_ext_hid__BASE
   static int addr_int = 0;
-  volatile uint32_t * const video_base = (volatile uint32_t*)(DEV_MAP__io_ext_hid__BASE+0x10000);
+  volatile uint32_t * const video_base = (volatile uint32_t*)(DEV_MAP__io_ext_hid__BASE+0x8000);
   switch (ch)
     {
     case '\b':
@@ -38,12 +38,11 @@ void minion_console_putchar(unsigned char ch)
       break;
     case '\n':
       while ((addr_int & 127) < 127)
-	video_base[15] = addr_int++;
+        video_base[addr_int++] = ' ';
       ++addr_int;
       break;
     default:
-      video_base[15] = addr_int++;
-      //      video_base[addr_int++] = ch;
+      video_base[addr_int++] = ch;
       break;
     }
   addr_int &= 4095;
