@@ -179,8 +179,6 @@ void minion_dispatch(const char *ucmd);
 /* minion address space pointers */
 #define hid_addr DEV_MAP__io_ext_hid__BASE
 volatile uint32_t *sd_base = (uint32_t *)(hid_addr + 0x00010000);
-static volatile uint32_t *sdtx_base = (uint32_t *)(hid_addr + 0x00014000);
-static volatile uint32_t *sdrx_base = (uint32_t *)(hid_addr + 0x00018000);
 
 void write_led(uint32_t data)
 {
@@ -340,7 +338,7 @@ static void minion_sdhci_read_block_pio(u8 *buf)
 	  
 	  while (len) {
 	    if (chunk == 0) {
-	      scratch =  __be32_to_cpu(sdrx_base[i++]);
+	      scratch =  __be32_to_cpu(sd_base[0x2000+i++]);
 	      chunk = 4;
 	    }
 	    
@@ -394,7 +392,7 @@ static void minion_sdhci_write_block_pio(u8 *buf)
 			len--;
 
 			if ((chunk == 4) || ((len == 0) && (blksize == 0))) {
-				sdtx_base[i++] = scratch;
+				sd_base[0x2000 + i++] = scratch;
 				chunk = 0;
 				scratch = 0;
 			}
@@ -421,9 +419,8 @@ void card_response(void)
 	case 7: myputs("sd_cmd_packet[47:32]"); break;
 	case 8: myputs("sd_data_wait"); break;
 	case 9: myputs("sd_transf_cnt"); break;
-	case 10: myputs("rx_fifo_status"); break;
-	case 11: myputs("tx_fifo_status"); break;
 	case 12: myputs("sd_detect"); break;
+	case 13: myputs("sd_xfr_addr"); break;
 	case 16: myputs("sd_align"); break;
 	case 17: myputs("clock_divider_sd_clk"); break;
 	case 18: myputs("sd_cmd_arg"); break;
@@ -822,9 +819,22 @@ int i;
 
 int sd_read_sector1(int sect, void *buf, int max)
 {
-  int rslt = 0;
+  int i, rslt = 0;
 #ifdef SDHCI_VERBOSE3
   printf("sd_read_sector1(%d)\n", sect);
+  for (i = 0; i < 512; i++)
+    {
+      sd_base[0x2000 + i ] = 0xDEADBEEF + i;
+    }
+  for (i = 0; i < 512; i++)
+    {
+      rslt |= (sd_base[0x2000 + i ] != 0xDEADBEEF + i);
+    }
+  if (rslt)
+    {
+    myputs("card buffer ram test failed\n");
+    return rslt;
+    }  
 #endif
 sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
  sdhci_present_state = sdhci_read(SDHCI_PRESENT_STATE);

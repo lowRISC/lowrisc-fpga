@@ -28,24 +28,24 @@ void minion_console_putchar(unsigned char ch)
 {
 #ifdef DEV_MAP__io_ext_hid__BASE
   static int addr_int = 0;
-  volatile uint32_t * const video_base = (volatile uint32_t*)(DEV_MAP__io_ext_hid__BASE+0x8000);
-  switch (ch)
+  volatile uint32_t * const vid_base = (volatile uint32_t*)(DEV_MAP__io_ext_hid__BASE+0x8000);
+  switch(ch)
     {
-    case '\b':
-      if (addr_int & 127) addr_int--;
-      break;
-    case '\r':
-      break;
-    case '\n':
-      while ((addr_int & 127) < 127)
-        video_base[addr_int++] = ' ';
-      ++addr_int;
-      break;
-    default:
-      video_base[addr_int++] = ch;
-      break;
+    case 8: case 127: if (addr_int & 127) --addr_int; break;
+    case 13: addr_int = addr_int & -128; break;
+    case 10: addr_int = (addr_int|127)+1; break;
+    default: vid_base[addr_int++] = ch;
     }
-  addr_int &= 4095;
+  if (addr_int >= 4096-128)
+    {
+      // this is where we scroll
+      for (addr_int = 0; addr_int < 4096; addr_int++)
+        if (addr_int < 4096-128)
+          vid_base[addr_int] = vid_base[addr_int+128];
+        else
+          vid_base[addr_int] = ' ';
+      addr_int = 4096-256;
+    }
 #endif  
 }
 

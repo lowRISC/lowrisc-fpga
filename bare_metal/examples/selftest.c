@@ -1,4 +1,5 @@
 // SD test program
+#define ETH_BOOT
 
 #include <stdio.h>
 #include <stdint.h>
@@ -491,6 +492,7 @@ void mygets(char *cmd)
 
 void old_init2(size_t addr, size_t addr2)
 {
+  int err = 0;
   int i, rca, busy, timeout = 0;
   size_t data, sdcmd, arg, setting;
   //  board_mmc_power_init();
@@ -558,7 +560,7 @@ size_t mystrtol(const char *nptr, char **endptr, int base)
 void show_sector(u8 *buf)
 {
   int i;
-  for (i = 0; i < 512; i++)
+  for (i = 0; i < 544; i++)
     {
       if ((i & 31) == 0)
 	{
@@ -626,9 +628,11 @@ void minion_dispatch(const char *ucmd)
       case 'D':
 	show_dir(ucmd+1);
 	break;
+#ifdef ETH_BOOT
       case 'E':
 	eth_main();
 	break;
+#endif
       case 'f':
 	sdcard_test(ucmd+1);
 	break;
@@ -782,27 +786,35 @@ void minion_dispatch(const char *ucmd)
       }
 }
 
+#define HELLO "Hello LowRISC! "__TIMESTAMP__"\n"
+
 int main (void)
 {
   trace_main();
   uart_init();
   board_mmc_power_init();  
-  printf("Hello LowRISC! "__TIMESTAMP__"\n");
   do {
     if (sd_base[31] & 1)
       {
-	uart_send_string("Jumping to DRAM because SW0 is high ..\r\n");
+	uart_send_string(HELLO"Jumping to DRAM because SW0 is high ..\r\n");
 	just_jump();
       }
     if (sd_base[31] & 2)
       {
-	uart_send_string("Booting from FLASH because SW1 is high ..\r\n");
+	uart_send_string(HELLO"Booting from FLASH because SW1 is high ..\r\n");
 	boot(prepare(""));
       }
+#ifdef ETH_BOOT
     if (sd_base[31] & 4)
       {
-	uart_send_string("Booting from Ethernet because SW2 is high ..\r\n");
+	uart_send_string(HELLO"Booting from Ethernet because SW2 is high ..\r\n");
 	eth_main();
+      }
+#endif
+    if (sd_base[31] & 8)
+      {
+        uart_send_string("\n");
+        old_init2(0,1);
       }
     uart_send_string("selftest> ");
     mygets(linbuf);
@@ -810,6 +822,8 @@ int main (void)
   } while (*linbuf != 'q');
   return 0;
 }
+
+#ifdef ETH_BOOT
 
 uip_ipaddr_t uip_hostaddr, uip_draddr, uip_netmask;
 
@@ -1032,33 +1046,6 @@ static int oldidx;
 static uint16_t peer_port;
 static u_char peer_addr[6];
 static uint64_t maskarray[sizeof_maskarray/sizeof(uint64_t)];
-
-void external_interrupt(void)
-{
-  int handled = 0;
-#ifdef VERBOSE
-  printf("Hello external interrupt! "__TIMESTAMP__"\n");
-#endif  
-  /* Check if there is Rx Data available */
-  if (eth_read(RSR_OFFSET) & RSR_RECV_DONE_MASK)
-    {
-#ifdef VERBOSE
-      printf("Ethernet interrupt\n");
-#endif  
-      int length = copyin_pkt();
-      handled = 1;
-    }
-  if (uart_check_read_irq())
-    {
-      int rslt = uart_read_irq();
-      printf("uart interrupt read %x (%c)\n", rslt, rslt);
-      handled = 1;
-    }
-  if (!handled)
-    {
-      printf("unhandled interrupt!\n");
-    }
-}
     // Function for checksum calculation. From the RFC,
     // the checksum algorithm is:
     //  "The checksum field is the 16 bit one's complement of the one's
@@ -1583,3 +1570,33 @@ int raw_udp_main(void *msg, int payload_size)
 
     }
 
+#endif
+
+void external_interrupt(void)
+{
+  int handled = 0;
+#ifdef VERBOSE
+  printf("Hello external interrupt! "__TIMESTAMP__"\n");
+#endif  
+  /* Check if there is Rx Data available */
+  if (eth_read(RSR_OFFSET) & RSR_RECV_DONE_MASK)
+    {
+#ifdef VERBOSE
+      printf("Ethernet interrupt\n");
+#endif  
+#ifdef ETH_BOOT
+      int length = copyin_pkt();
+#endif
+      handled = 1;
+    }
+  if (uart_check_read_irq())
+    {
+      int rslt = uart_read_irq();
+      printf("uart interrupt read %x (%c)\n", rslt, rslt);
+      handled = 1;
+    }
+  if (!handled)
+    {
+      printf("unhandled interrupt!\n");
+    }
+}
