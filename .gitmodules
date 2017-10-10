@@ -13,3 +13,6 @@
 [submodule "board/zed"]
 	path = board/zed
 	url = https://github.com/furkanturan/lowrisc-zed.git
+[submodule "board/vcu108"]
+	path = board/vcu108
+	url = https://github.com/jrrk/lowrisc-vcu108.git
