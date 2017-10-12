@@ -316,7 +316,7 @@ int main() {
   //  maskarray = (uint64_t *)sbrk(sizeof_maskarray);
   memset(maskarray, 0, sizeof_maskarray);
   
-  mac_addr.addr[0] = (uint8_t)0xE0;
+  mac_addr.addr[0] = (uint8_t)0xEE;
   mac_addr.addr[1] = (uint8_t)0xE1;
   mac_addr.addr[2] = (uint8_t)0xE2;
   mac_addr.addr[3] = (uint8_t)0xE3;
