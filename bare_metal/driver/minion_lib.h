@@ -350,3 +350,4 @@ extern void show_sector(u8 *buf);
 extern void myhash(size_t addr);
 extern uint8_t *hash_buf(const void *in_buf, int count);
 extern int minion_cache_map(int sect, int clr);
+extern uint32_t sd_resp(int sel);
