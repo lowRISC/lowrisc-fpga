@@ -27,7 +27,7 @@ void uart_init() {
 void minion_console_putchar(unsigned char ch)
 {
 #ifdef DEV_MAP__io_ext_hid__BASE
-  static int addr_int = 0;
+  static int addr_int = 4096-256;
   volatile uint32_t * const vid_base = (volatile uint32_t*)(DEV_MAP__io_ext_hid__BASE+0x8000);
   switch(ch)
     {

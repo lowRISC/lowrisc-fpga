@@ -30,13 +30,13 @@ static uint8_t *digest = NULL;
 
 void boot(uint8_t *boot_file_buf, uint32_t fsize);
 
-int sd_main (void)
+int sd_main (int sw)
 {
   FIL fil;                // File object
   FRESULT fr;             // FatFs return code
   uint8_t *boot_file_buf = (uint8_t *)(get_ddr_base()) + ((uint64_t)DEV_MAP__mem__MASK + 1) - MAX_FILE_SIZE; // at the end of DDR space
   uint8_t *memory_base = (uint8_t *)(get_ddr_base());
-
+  char nam[20];
   // Register work area to the default drive
   if(f_mount(&FatFs, "", 1)) {
     printf("Fail to mount SD driver!\n");
@@ -44,10 +44,12 @@ int sd_main (void)
   }
 
   // Open a file
-  printf("Load boot.bin into memory\n");
-  fr = f_open(&fil, "boot.bin", FA_READ);
+  printf("Switch selection = %X\n", sw);
+  sprintf(nam, "boot%c%c%c%c.bin", (sw&0x8?'1':'0'), (sw&0x4?'1':'0'), (sw&0x2?'1':'0'), (sw&0x1?'1':'0'));
+  printf("Load %s into memory\n", nam);
+  fr = f_open(&fil, nam, FA_READ);
   if (fr) {
-    printf("Failed to open boot!\n");
+    printf("Failed to open %s!\n", nam);
     return (int)fr;
   }
 
@@ -920,24 +922,26 @@ int raw_udp_main(void *msg, int payload_size)
 
 int main()
 {
+  int sw = sd_resp(31);
   uart_init();
   board_mmc_power_init();  
 
   uart_send_string("lowRISC boot program\n=====================================\n");
-  if (sd_resp(31) & 1)
+  if (sw & 1)
       {
         uart_send_string(HELLO"Jumping to DRAM because SW0 is high ..\r\n");
         just_jump();
       }
-  if (sd_resp(31) & 2)
+  if (sw & 2)
       {
         uart_send_string(HELLO"Booting from FLASH because SW1 is high ..\r\n");
-        sd_main();
+        sd_main(sw>>3);
       }
-  if (sd_resp(31) & 4)
+  if (sw & 4)
       {
         uart_send_string(HELLO"Booting from Ethernet because SW2 is high ..\r\n");
         eth_main();
       }
   uart_send_string(HELLO"Turn on SW0 for trace debugger loading, SW1 for SD-card loading, or SW2 for Ethernet loading\r\n");
+  uart_recv();
 }
