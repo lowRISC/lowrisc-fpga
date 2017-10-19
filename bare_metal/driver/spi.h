@@ -4,15 +4,9 @@
 #define SD_CARD_HEADER_H
 
 #include <stdint.h>
-#include "dev_map.h"
+#include "consts.hpp"
 
 // Xilinx AXI_QUAD_SPI
-
-#ifdef DEV_MAP__io_ext_spi__BASE
-  #define SPI_BASE ((uint32_t)DEV_MAP__io_ext_spi__BASE)
-#else
-  #define SPI_BASE 0
-#endif
 
 // Global interrupt enable register [Write]
 #define SPI_GIER 0x07u

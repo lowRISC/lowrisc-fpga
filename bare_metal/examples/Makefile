@@ -35,7 +35,7 @@ TARGETS = boot dram hello sdcard trace jump flash tag selftest
 
 DRIVER_TARGETS = syscalls spi uart memory elf diskio ff minion_helper sdhci-minion-hash-md5
 
-HEADERS += $(wildcard $(DRIVER_DIR)/*.h) $(GEN_DIR)/dev_map.h
+HEADERS += $(wildcard $(DRIVER_DIR)/*.h) $(GEN_DIR)/consts.hpp
 
 #--------------------------------------------------------------------
 # Build Drivers
@@ -67,7 +67,7 @@ $(RISCV_FILES): %.riscv:$(BASE_DIR)/%.c $(HEADERS) $(DRIVER_OBJS) crt.o $(DRIVER
 	$(RISCV_LINK) $(RISCV_GCC_OPTS) -o $@ $< $(DRIVER_OBJS) crt.o $(RISCV_LINK_OPTS)
 
 $(HEX_FILES): %.hex:%.riscv
-	elf2hex 1073741824 16 4096 $< > $@
+	elf2hex 16 4096 1073741824 $< > $@
 
 $(DUMP_FILES): %.dump:%.riscv
 	$(RISCV_DUMP) $(RISCV_DUMP_OPTS) $< > $@
