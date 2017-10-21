@@ -62,74 +62,15 @@ _start:
 1:
 #endif
 
-  csrr t0, mstatus
-  li t1, MSTATUS_XS
-  and t1, t0, t1
-  sw t1, have_vec, t2
-
-  ## if that didn't stick, we don't have a FPU, so don't initialize it
-  li t1, MSTATUS_FS
-  and t1, t0, t1
-  beqz t1, 1f
-
-#ifdef __riscv_hard_float
-  fssr    x0
-  fmv.s.x f0, x0
-  fmv.s.x f1, x0
-  fmv.s.x f2, x0
-  fmv.s.x f3, x0
-  fmv.s.x f4, x0
-  fmv.s.x f5, x0
-  fmv.s.x f6, x0
-  fmv.s.x f7, x0
-  fmv.s.x f8, x0
-  fmv.s.x f9, x0
-  fmv.s.x f10,x0
-  fmv.s.x f11,x0
-  fmv.s.x f12,x0
-  fmv.s.x f13,x0
-  fmv.s.x f14,x0
-  fmv.s.x f15,x0
-  fmv.s.x f16,x0
-  fmv.s.x f17,x0
-  fmv.s.x f18,x0
-  fmv.s.x f19,x0
-  fmv.s.x f20,x0
-  fmv.s.x f21,x0
-  fmv.s.x f22,x0
-  fmv.s.x f23,x0
-  fmv.s.x f24,x0
-  fmv.s.x f25,x0
-  fmv.s.x f26,x0
-  fmv.s.x f27,x0
-  fmv.s.x f28,x0
-  fmv.s.x f29,x0
-  fmv.s.x f30,x0
-  fmv.s.x f31,x0
-#endif
-
-1:
-
   # initialize global pointer
   la gp, _gp
 
   la  tp, _end + 63
   and tp, tp, -64
 
-  # get core id
-  csrr a0, mhartid
-  # for now, assume only 1 core
-  li a1, 1
-1:bgeu a0, a1, 1b
-
-  # give each core 4KB of stack + TLS
-#define STKSHIFT 12
-  sll a2, a0, STKSHIFT
-  add tp, tp, a2
-  add sp, a0, 1
-  sll sp, sp, STKSHIFT
-  add sp, sp, tp
-
+  li a1, 0x41010000
+  add sp, a1, -8
+        
   j _init
 
 trap_entry:

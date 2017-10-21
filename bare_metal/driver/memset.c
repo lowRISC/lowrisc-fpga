@@ -20,9 +20,7 @@
 
 #undef memset
 
-void *
-inhibit_loop_to_libcall
-memset (void *dstpp, int c, size_t len)
+void *memset (void *dstpp, int c, size_t len)
 {
   long int dstp = (long int) dstpp;
 
@@ -85,4 +83,3 @@ memset (void *dstpp, int c, size_t len)
 
   return dstpp;
 }
-libc_hidden_builtin_def (memset)

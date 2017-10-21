@@ -1,7 +1,6 @@
 // See LICENSE for license details.
 
 #include "uart.h"
-#include "minion_lib.h"
 
 volatile uint32_t *uart_base_ptr = (uint32_t *)(UART_BASE);
 
@@ -20,37 +19,16 @@ void uart_init() {
 
   // Enable read IRQ
   *(uart_base_ptr + UART_IER) = 0x0001u;
-
 }
 
-void minion_console_putchar(unsigned char ch)
-{
-  static int addr_int = 0;
-  volatile uint32_t * const video_base = (volatile uint32_t*)(10<<20);
-  switch (ch)
-    {
-    case '\b':
-      if (addr_int & 127) addr_int--;
-      break;
-    case '\r':
-      break;
-    case '\n':
-      while ((addr_int & 127) < 127)
-	queue_write(&(video_base[addr_int++]), ' ', 1);
-      ++addr_int;
-      break;
-    default:
-      queue_write(&video_base[addr_int++], ch, 0);
-      break;
-    }
-  addr_int &= 4095;
+void uart_send_irq(uint8_t data) {
+  *(uart_base_ptr + UART_THR) = data;
 }
 
 void uart_send(uint8_t data) {
   // wait until THR empty
   while(! (*(uart_base_ptr + UART_LSR) & 0x40u));
   *(uart_base_ptr + UART_THR) = data;
-  minion_console_putchar(data);
 }
 
 void uart_send_string(const char *str) {
@@ -66,17 +44,6 @@ uint8_t uart_recv() {
   // wait until RBR has data
   while(! (*(uart_base_ptr + UART_LSR) & 0x01u))
     {
-      uint32_t key;
-      volatile uint32_t * const keyb_base = (volatile uint32_t*)(9<<20);
-      key = queue_read(keyb_base);
-      if ((1<<28) & ~key) /* FIFO not empty */
-	{
-	  int ch;
-	  queue_write(keyb_base+1, 0, 0);
-	  ch = (queue_read(keyb_base+1) >> 8) & 127; /* strip off the scan code (default ascii code is UK) */
-	  if (ch == '\r') ch = '\n'; /* translate CR to LF, because nobody else will */
-	  return ch;
-	}
     }
   return *(uart_base_ptr + UART_RBR);
 }

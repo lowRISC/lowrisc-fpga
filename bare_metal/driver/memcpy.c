@@ -21,10 +21,7 @@
 #include <string.h>
 #include <memcopy.h>
 
-#undef memcpy
-
-void *
-memcpy (void *dstpp, const void *srcpp, size_t len)
+void *memcpy (void *dstpp, const void *srcpp, size_t len)
 {
   unsigned long int dstp = (long int) dstpp;
   unsigned long int srcp = (long int) srcpp;
@@ -57,4 +54,3 @@ memcpy (void *dstpp, const void *srcpp, size_t len)
 
   return dstpp;
 }
-libc_hidden_builtin_def (memcpy)

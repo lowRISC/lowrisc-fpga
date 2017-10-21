@@ -21,7 +21,7 @@ SECTIONS
 {
 
   /* text: test code section */
-  . = 0x40000000;
+  . = 0x41000000;
   .text : 
   {
     crt.o(.text)

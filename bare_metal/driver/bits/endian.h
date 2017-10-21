@@ -10,4 +10,4 @@
 # error "Never use <bits/endian.h> directly; include <endian.h> instead."
 #endif
 
-#error Machine byte order unknown.
+#define __BYTE_ORDER __LITTLE_ENDIAN

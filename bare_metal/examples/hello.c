@@ -4,7 +4,11 @@
 #include "uart.h"
 
 int main() {
+  int delay = 1000000;
   uart_init();
-  printf("Hello World!\n");
+  uart_send_irq('*');
+  uart_send_string("Hello World!\n");
+  while (delay--)
+    ;
 }
 
