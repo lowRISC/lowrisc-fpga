@@ -50,7 +50,7 @@ void uart_send(uint8_t data) {
   // wait until THR empty
   while(! (*(uart_base_ptr + UART_LSR) & 0x40u));
   *(uart_base_ptr + UART_THR) = data;
-  minion_console_putchar(data);
+  //minion_console_putchar(data);
 }
 
 void uart_send_string(const char *str) {
@@ -64,20 +64,20 @@ void uart_send_buf(const char *buf, const int32_t len) {
 
 uint8_t uart_recv() {
   // wait until RBR has data
-  while(! (*(uart_base_ptr + UART_LSR) & 0x01u))
-    {
-      uint32_t key;
-      volatile uint32_t * const keyb_base = (volatile uint32_t*)(9<<20);
-      key = queue_read(keyb_base);
-      if ((1<<28) & ~key) /* FIFO not empty */
-	{
-	  int ch;
-	  queue_write(keyb_base+1, 0, 0);
-	  ch = (queue_read(keyb_base+1) >> 8) & 127; /* strip off the scan code (default ascii code is UK) */
-	  if (ch == '\r') ch = '\n'; /* translate CR to LF, because nobody else will */
-	  return ch;
-	}
-    }
+  while(! (*(uart_base_ptr + UART_LSR) & 0x01u));
+//    {
+//      uint32_t key;
+//      volatile uint32_t * const keyb_base = (volatile uint32_t*)(9<<20);
+//      key = queue_read(keyb_base);
+//      if ((1<<28) & ~key) /* FIFO not empty */
+//        {
+//          int ch;
+//          queue_write(keyb_base+1, 0, 0);
+//          ch = (queue_read(keyb_base+1) >> 8) & 127; /* strip off the scan code (default ascii code is UK) */
+//          if (ch == '\r') ch = '\n'; /* translate CR to LF, because nobody else will */
+//          return ch;
+//        }
+//    }
   return *(uart_base_ptr + UART_RBR);
 }
 
