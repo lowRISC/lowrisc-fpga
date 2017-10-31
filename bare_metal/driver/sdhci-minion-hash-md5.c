@@ -9,6 +9,7 @@
 #include <string.h>
 #endif
 #include "sdhci-minion-hash-md5.h"
+#include "mini-printf.h"
 #include "minion_lib.h"
 
 static __attribute__ ((always_inline)) __inline__ uint32_t rotl32(uint32_t x, unsigned n)

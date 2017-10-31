@@ -7,6 +7,7 @@
 #include "ff.h"
 #include "uart.h"
 #include "elf.h"
+#include "mini-printf.h"
 #include "memory.h"
 
 FATFS FatFs;   // Work area (file system object) for logical drive
@@ -23,7 +24,7 @@ int main (void)
 {
   FIL fil;                // File object
   FRESULT fr;             // FatFs return code
-  uint8_t *boot_file_buf = (uint8_t *)(get_ddr_base()) + ((uint64_t)DEV_MAP__mem__MASK + 1) - MAX_FILE_SIZE; // at the end of DDR space
+  uint8_t *boot_file_buf = (uint8_t *)(get_ddr_base()) + ((uint64_t)MEM_SIZE) - MAX_FILE_SIZE; // at the end of DDR space
   uint8_t *memory_base = (uint8_t *)(get_ddr_base());
 
   uart_init();

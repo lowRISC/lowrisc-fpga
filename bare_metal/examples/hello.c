@@ -2,9 +2,11 @@
 
 #include <stdio.h>
 #include "uart.h"
+#include "mini-printf.h"
 
 int main() {
   uart_init();
-  printf("Hello World!\n");
+  uart_send_string("\nBare metal UART access\n");
+  printf("Hello World! "__DATE__" "__TIME__"\n");
 }
 

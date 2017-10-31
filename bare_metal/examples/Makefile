@@ -20,10 +20,10 @@ GEN_DIR = $(FPGA_DIR)/generated-src
 RISCV_PREFIX=riscv64-unknown-elf-
 RISCV_GCC = $(RISCV_PREFIX)gcc
 RISCV_DUMP = $(RISCV_PREFIX)objdump
-RISCV_GCC_OPTS = -mcmodel=medany -fpie -static -std=gnu99 -g -Os -ffast-math -fno-common -fno-builtin-printf -I$(DRIVER_DIR) -I$(GEN_DIR) -I$(BASE_DIR)
+RISCV_GCC_OPTS = -march=rv64imafd -fpie -static -std=gnu99 -g -Os -ffast-math -fno-common -fno-builtin-printf -save-temps -I$(DRIVER_DIR) -I$(GEN_DIR) -I$(BASE_DIR)
 RISCV_DUMP_OPTS = -D -S -l
-RISCV_LINK = $(RISCV_GCC) -T $(DRIVER_DIR)/test.ld
-RISCV_LINK_OPTS = -nostdlib -nostartfiles -ffast-math -lc -lgcc
+RISCV_LINK = $(RISCV_PREFIX)gcc -T $(DRIVER_DIR)/test.ld
+RISCV_LINK_OPTS = -nostdlib -nostartfiles -ffast-math -Xlinker -M=mapfile
 
 #--------------------------------------------------------------------
 # Objects
@@ -33,7 +33,7 @@ default: all
 
 TARGETS = boot dram hello sdcard trace jump flash tag selftest
 
-DRIVER_TARGETS = syscalls spi uart memory elf diskio ff minion_helper sdhci-minion-hash-md5
+DRIVER_TARGETS = syscalls spi uart memory memcpy memset strcpy strlen strnlen wordcopy elf diskio ff minion_helper sdhci-minion-hash-md5 mini-printf
 
 HEADERS += $(wildcard $(DRIVER_DIR)/*.h) $(GEN_DIR)/consts.hpp
 
@@ -64,13 +64,14 @@ all: $(HEX_FILES)
 dump: $(DUMP_FILES)
 
 $(RISCV_FILES): %.riscv:$(BASE_DIR)/%.c $(HEADERS) $(DRIVER_OBJS) crt.o $(DRIVER_DIR)/test.ld
-	$(RISCV_LINK) $(RISCV_GCC_OPTS) -o $@ $< $(DRIVER_OBJS) crt.o $(RISCV_LINK_OPTS)
+	$(RISCV_LINK) $(RISCV_GCC_OPTS) $(RISCV_LINK_OPTS) -o $@ $< $(DRIVER_OBJS) crt.o
+	riscv64-unknown-elf-objdump -d $@ > $*.dis
 
 $(HEX_FILES): %.hex:%.riscv
-	riscv64-unknown-elf-objdump -d $< > $*.dis
 	riscv64-unknown-elf-objcopy -I elf64-little -O verilog $< cnvmem.mem
 	iverilog ../script/cnvmem.v -o cnvmem
 	./cnvmem
+	mv cnvmem.coe $*.coe
 	mv cnvmem.hex $@
 
 $(DUMP_FILES): %.dump:%.riscv

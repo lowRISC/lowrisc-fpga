@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "uart.h"
+#include "mini-printf.h"
 #include "memory.h"
 
 // 16MB
@@ -16,12 +17,17 @@ int main() {
   uart_init();
   printf("\nFLASH test program.\n");
 
-  while(cnt < (FLASH_SIZE >> 3)) {
-    if(cnt % 4 == 0)
-      printf("\n%8x ", raddr);
-    rdata = *(raddr++);
-    printf("%16x ", rdata);
-    cnt++;
-  }
+  if (raddr)
+    {
+      while(cnt < (FLASH_SIZE >> 3)) {
+        if(cnt % 4 == 0)
+          printf("\n%8x ", raddr);
+        rdata = *(raddr++);
+        printf("%16x ", rdata);
+        cnt++;
+      }
+    }
+  else
+    printf("FLASH is not enabled\n");
 }
 
