@@ -67,6 +67,7 @@ $(RISCV_FILES): %.riscv:$(BASE_DIR)/%.c $(HEADERS) $(DRIVER_OBJS) crt.o $(DRIVER
 	$(RISCV_LINK) $(RISCV_GCC_OPTS) -o $@ $< $(DRIVER_OBJS) crt.o $(RISCV_LINK_OPTS)
 
 $(HEX_FILES): %.hex:%.riscv
+	riscv64-unknown-elf-objdump -d $< > $*.dis
 	riscv64-unknown-elf-objcopy -I elf64-little -O verilog $< cnvmem.mem
 	iverilog ../script/cnvmem.v -o cnvmem
 	./cnvmem
