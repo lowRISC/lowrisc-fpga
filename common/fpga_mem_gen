@@ -14,43 +14,18 @@ module_template = '''module %s(
 );
 %s
 %s
-always @(posedge RW0_clk) begin
-  %s
-end
 %s
 
 endmodule
 
 '''
 
-
-mask_assert_template = '''
-`ifndef SYNTHESIS
-integer i;
-integer j;
-always @(posedge RW0_clk) begin%s
-end
-`endif
-'''
-
-
-assert_template = '''
-  for (i=0; i<%d; i=i+%d) begin
-    for (j=1; j<%d; j=j+1) begin
-      if (%sM[i] != %sM[i+j]) begin
-        $fwrite(32'h80000002, "ASSERTION FAILED: write mask granularity\\n");
-        $finish;
-      end
-    end
-  end'''
-
-
 def parse_line(line):
   name = ''
   width = 0
   depth = 0
   ports = ''
-  mask_gran = 1
+  mask_gran = 0
   tokens = line.split()
   i = 0
   for i in range(0,len(tokens),2):
@@ -59,6 +34,7 @@ def parse_line(line):
       name = tokens[i+1]
     elif s == 'width':
       width = int(tokens[i+1])
+      mask_gran = width # default setting
     elif s == 'depth':
       depth = int(tokens[i+1])
     elif s == 'ports':
@@ -67,29 +43,44 @@ def parse_line(line):
       mask_gran = int(tokens[i+1])
     else:
       sys.exit('%s: unknown argument %s' % (sys.argv[0], a))
-  return (name, width, depth, ports, mask_gran)
-
-
+  return (name, width, depth, mask_gran, width//mask_gran, ports)
 
 def gen_range(mask_index, mask_gran, max_width):
   return '%d:%d' % (min(mask_gran*(mask_index+1),max_width)-1,
                     min(mask_gran*(mask_index),max_width))
 
-
-
-def gen_mem(name, width, depth, ports, mask_gran):
+def gen_mem(name, width, depth, mask_gran, mask_seg, ports):
   addr_width = max(math.ceil(math.log(depth)/math.log(2)),1)
-  mask_width = int(math.ceil(float(width) / mask_gran))
-  port_spec = ['input RW0_clk']
+  port_spec = []
   readports = []
   writeports = []
   latchports = []
   rwports = []
   decl = []
   combinational = []
-  sequential = []
+  sequential = ['always @(posedge RW0_clk) begin']
   maskedports = {}
-  mask_asserts = ''
+  port_wea = []
+  if width>32 and depth>64 and mask_gran%8 == 0 and mask_seg==width/mask_gran and ports==['mrw']:
+    decl += ['`ifdef SYNTHESIS']
+    decl += ['\n/* name=%s, width=%d, depth=%d, mask_gran=%d, mask_seg=%d, ports=%s FPGA special case */\n' % (name, width, depth, mask_gran, mask_seg, ports)]
+    decl += ['blk_mem_gen_%d_%d_%d_%s my_block_ram (' % (width, depth, mask_gran, '_'.join(ports))]
+    decl += ['.clka(RW0_clk),    // input wire clka']
+    decl += ['.ena(RW0_en),      // input wire ena']
+    if mask_gran == 8:
+      port_wea = ['RW0_wmask']
+    else:
+      for i in xrange(mask_seg-1, -1, -1):
+        for j in xrange(mask_gran-8, -8, -8):
+          port_wea += ['RW0_wmask[%d]' % (i)]
+    decl += ['.wea({%s}),   // input wire [%d : 0] wea' % (','.join(port_wea), mask_seg*(mask_gran/8)-1)]
+    decl += ['.addra(RW0_addr),  // input wire [%d: 0] addra' % (math.log(depth,2)-1)]
+    decl += ['.dina(RW0_wdata),  // input wire [%d : 0] dina' % (width-1)]
+    decl += ['.douta(RW0_rdata)  // output wire [%d : 0] douta' % (width-1)]
+    decl += [');']
+    decl += ['`else // not synthesis']
+  else:
+    decl += ['\n/* name=%s, width=%d, depth=%d, mask_gran=%d, mask_seg=%d, ports=%s normal case */\n' % (name, width, depth, mask_gran, mask_seg, ports)]
   for pid in range(len(ports)):
     ptype = ports[pid]
     if ptype[0:1] == 'm':
@@ -97,26 +88,29 @@ def gen_mem(name, width, depth, ports, mask_gran):
       maskedports[pid] = pid
 
     if ptype == 'read':
+      port_spec += ['input R%d_clk' % pid]
       port_spec += ['input [%d:0] R%d_addr' % (addr_width-1, pid)]
       port_spec += ['input R%d_en' % pid]
       port_spec += ['output [%d:0] R%d_rdata' % (width-1, pid)]
       readports += [pid]
     elif ptype == 'write':
+      port_spec += ['input W%d_clk' % pid]
       port_spec += ['input [%d:0] W%dA_addr' % (addr_width-1, pid)]
       port_spec += ['input W%d_en' % pid]
       port_spec += ['input [%d:0] W%d_wdata' % (width-1, pid)]
       if pid in maskedports:
-        port_spec += ['input [%d:0] W%d_mask' % (width-1, pid)]
+        port_spec += ['input [%d:0] W%d_mask' % (mask_seg-1, pid)]
       if not use_latches or pid in maskedports:
         writeports += [pid]
       else:
         latchports += [pid]
     elif ptype == 'rw':
+      port_spec += ['input RW%d_clk' % pid]
       port_spec += ['input [%d:0] RW%d_addr' % (addr_width-1, pid)]
       port_spec += ['input RW%d_en' % pid]
       port_spec += ['input RW%d_wmode' % pid]
       if pid in maskedports:
-        port_spec += ['input [%d:0] RW%d_wmask' % (width-1, pid)]
+        port_spec += ['input [%d:0] RW%d_wmask' % (mask_seg-1, pid)]
       port_spec += ['input [%d:0] RW%d_wdata' % (width-1, pid)]
       port_spec += ['output [%d:0] RW%d_rdata' % (width-1, pid)]
       rwports += [pid]
@@ -124,14 +118,16 @@ def gen_mem(name, width, depth, ports, mask_gran):
       sys.exit('%s: unknown port type %s' % (sys.argv[0], ptype))
 
   decl += ['reg [%d:0] ram [%d:0];' % (width-1, depth-1)]
-  decl += ['`ifndef SYNTHESIS']
+  if port_wea == []:
+    decl += ['`ifndef SYNTHESIS']
   decl += ['  integer initvar;']
   decl += ['  initial begin']
   decl += ['    #0.002;']
   decl += ['    for (initvar = 0; initvar < %d; initvar = initvar+1)' % depth]
   decl += ['      ram[initvar] = {%d {$random}};' % ((width-1)/32+1)]
   decl += ['  end']
-  decl += ['`endif']
+  if port_wea == []:
+    decl += ['`endif // SYNTHESIS']
 
   for pid in readports:
     decl += ['reg [%d:0] reg_R%d_addr;' % (addr_width-1, pid)]
@@ -160,24 +156,25 @@ def gen_mem(name, width, depth, ports, mask_gran):
     if pid not in maskedports:
       sequential += ['if (W%d_en) ram[W%d_addr] <= W%d_wdata;' % (pid, pid, pid)]
     else:
-      for mask_index in range(mask_width):
+      for mask_index in range(mask_seg):
         rs = gen_range(mask_index, mask_gran, width)
         sequential += ['if (W%d_en && W%d_wmask[%d]) ram[W%d_addr][%s] <= W%d_wdata[%s];' %
-                       (pid, pid, mask_index*mask_gran, pid, rs, pid, rs)]
-      mask_asserts += assert_template % (mask_width, mask_gran, mask_gran, 'W'+str(pid), 'W'+str(pid))
+                       (pid, pid, mask_index, pid, rs, pid, rs)]
   for pid in rwports:
     if pid not in maskedports:
       sequential += ['if (RW%d_en && RW%d_wmode) ram[RW%d_addr] <= RW%d_wdata;' % (pid, pid, pid, pid)]
     else:
-      for mask_index in range(mask_width):
+      for mask_index in range(mask_seg):
         rs = gen_range(mask_index, mask_gran, width)
         sequential += ['if (RW%d_en && RW%d_wmode && RW%d_wmask[%d]) ram[RW%d_addr][%s] <= RW%d_wdata[%s];' %
-                       (pid, pid, pid, mask_index*mask_gran, pid, rs, pid, rs)]
-      mask_asserts += assert_template % (mask_width, mask_gran, mask_gran, 'RW'+str(pid), 'RW'+str(pid))
-  check_masks = '' if len(maskedports) == 0 else mask_assert_template % mask_asserts
+                       (pid, pid, pid, mask_index, pid, rs, pid, rs)]
+
+  sequential += ['end']
+  if port_wea <> []:
+    combinational += ['`endif // SYNTHESIS']
+
   return module_template % (name,
                             ',\n  '.join(port_spec),
-                            check_masks,
                             '\n  '.join(decl),
                             '\n  '.join(sequential),
                             '\n  '.join(combinational))
