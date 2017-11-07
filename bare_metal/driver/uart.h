@@ -46,6 +46,7 @@
 
 // UART APIs
 extern void uart_init();
+extern void uart_drain();
 extern void uart_send(uint8_t);
 extern void uart_send_irq(uint8_t);
 extern void uart_send_string(const char *str);

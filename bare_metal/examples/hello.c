@@ -7,6 +7,7 @@
 int main() {
   uart_init();
   uart_send_string("\nBare metal UART access\n");
-  printf("Hello World! "__DATE__" "__TIME__"\n");
+  mini_printf("Hello World! "__DATE__" "__TIME__"\n");
+  uart_drain();
 }
 

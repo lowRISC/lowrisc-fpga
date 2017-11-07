@@ -2,6 +2,8 @@
 
 #include "uart.h"
 
+#ifdef ADD_UART_16550
+
 volatile uint32_t *uart_base_ptr = (uint32_t *)(UART_BASE);
 
 void uart_init() {
@@ -29,10 +31,6 @@ void uart_send(uint8_t data) {
   // wait until THR empty
   while(! (*(uart_base_ptr + UART_LSR) & 0x40u));
   *(uart_base_ptr + UART_THR) = data;
-}
-
-void uart_send_string(const char *str) {
-  while (*str) uart_send(*str++);
 }
 
 void uart_send_buf(const char *buf, const int32_t len) {
@@ -66,4 +64,39 @@ void uart_enable_read_irq() {
 // disable uart read IRQ
 void uart_disable_read_irq() {
   *(uart_base_ptr + UART_IER) = 0x0000u;
+}
+
+#else
+
+volatile uint32_t *uart_base_ptr = (uint32_t *)(HID_BASE + (4 << 15));
+
+void uart_init() {
+  uart_base_ptr[1] = 54;
+}
+
+void uart_drain() {
+  while(0x1 & ~uart_base_ptr[1])
+    ;
+}
+
+void uart_send(uint8_t data) {
+  // wait until there is space in the fifo
+  while( uart_base_ptr[1] & 0x8);
+  // load FIFO
+  uart_base_ptr[0] = data;
+}
+
+uint8_t uart_recv() {
+  // wait until RBR has data
+  while(0x100 & ~uart_base_ptr[0])
+    {
+    }
+  uart_base_ptr[2] = 0;
+  return uart_base_ptr[0] & 0xFF;
+}
+
+#endif
+
+void uart_send_string(const char *str) {
+  while (*str) uart_send(*str++);
 }

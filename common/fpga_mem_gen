@@ -62,7 +62,7 @@ def gen_mem(name, width, depth, mask_gran, mask_seg, ports):
   maskedports = {}
   port_wea = []
   if width>32 and depth>64 and mask_gran%8 == 0 and mask_seg==width/mask_gran and ports==['mrw']:
-    decl += ['`ifdef SYNTHESIS']
+    decl += ['`ifdef FPGA_FULL']
     decl += ['\n/* name=%s, width=%d, depth=%d, mask_gran=%d, mask_seg=%d, ports=%s FPGA special case */\n' % (name, width, depth, mask_gran, mask_seg, ports)]
     decl += ['blk_mem_gen_%d_%d_%d_%s my_block_ram (' % (width, depth, mask_gran, '_'.join(ports))]
     decl += ['.clka(RW0_clk),    // input wire clka']
@@ -78,7 +78,7 @@ def gen_mem(name, width, depth, mask_gran, mask_seg, ports):
     decl += ['.dina(RW0_wdata),  // input wire [%d : 0] dina' % (width-1)]
     decl += ['.douta(RW0_rdata)  // output wire [%d : 0] douta' % (width-1)]
     decl += [');']
-    decl += ['`else // not synthesis']
+    decl += ['`else // not FPGA_FULL']
   else:
     decl += ['\n/* name=%s, width=%d, depth=%d, mask_gran=%d, mask_seg=%d, ports=%s normal case */\n' % (name, width, depth, mask_gran, mask_seg, ports)]
   for pid in range(len(ports)):
@@ -119,7 +119,7 @@ def gen_mem(name, width, depth, mask_gran, mask_seg, ports):
 
   decl += ['reg [%d:0] ram [%d:0];' % (width-1, depth-1)]
   if port_wea == []:
-    decl += ['`ifndef SYNTHESIS']
+    decl += ['`ifndef FPGA_FULL']
   decl += ['  integer initvar;']
   decl += ['  initial begin']
   decl += ['    #0.002;']
@@ -127,7 +127,7 @@ def gen_mem(name, width, depth, mask_gran, mask_seg, ports):
   decl += ['      ram[initvar] = {%d {$random}};' % ((width-1)/32+1)]
   decl += ['  end']
   if port_wea == []:
-    decl += ['`endif // SYNTHESIS']
+    decl += ['`endif // FPGA_FULL']
 
   for pid in readports:
     decl += ['reg [%d:0] reg_R%d_addr;' % (addr_width-1, pid)]
@@ -171,7 +171,7 @@ def gen_mem(name, width, depth, mask_gran, mask_seg, ports):
 
   sequential += ['end']
   if port_wea <> []:
-    combinational += ['`endif // SYNTHESIS']
+    combinational += ['`endif // FPGA_FULL']
 
   return module_template % (name,
                             ',\n  '.join(port_spec),

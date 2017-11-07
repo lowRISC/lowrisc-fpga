@@ -4,7 +4,7 @@
 
 volatile uint64_t * get_bram_base() {
 #ifdef BRAM_BASE
-  return BRAM_BASE;
+  return (uint64_t *)BRAM_BASE;
 #else
   return (uint64_t *)0;         /* boot ROM, raise error */
 #endif
