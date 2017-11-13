@@ -44,6 +44,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include "mini-printf.h"
+#include "uart.h"
 
 static unsigned int
 mini_strlen(const char *s)
@@ -198,7 +199,7 @@ mini_snprintf(char* buffer, unsigned int buffer_len, const char *fmt, ...)
 	return ret;
 }
 
-int printf (const char *fmt, ...)
+int mini_printf (const char *fmt, ...)
 {
   char buffer[99];
   va_list va;

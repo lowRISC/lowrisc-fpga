@@ -8,15 +8,17 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
+#include "uart.h"
 #include "errno.h"
 #include "memory.h"
 #include "minion_lib.h"
+#include "mini-printf.h"
 #include "sdhci-minion-hash-md5.h"
 
 #undef putchar
 void myputchar(char ch)
 {
-   putchar(ch);
+   uart_send(ch);
 }
 
 struct completion { void *dummy; };

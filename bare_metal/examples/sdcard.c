@@ -4,7 +4,8 @@
 #include "diskio.h"
 #include "ff.h"
 #include "uart.h"
-#include "trace.h"
+#include "mini-printf.h"
+#include "consts.hpp"
 
 /* Read a text file and display it */
 
@@ -21,9 +22,8 @@ int main (void)
   uint32_t br;            /* Read count */
   uint32_t i;
 
-  STM_TRACE(0x1234, 0xdeadbeef);
-
   uart_init();
+  printf("SD test program (addr=%x)\n", SPI_BASE);
   board_mmc_power_init();
   
   /* Register work area to the default drive */

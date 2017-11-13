@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "uart.h"
+#include "mini-printf.h"
 #include "memory.h"
 
 unsigned long long lfsr64(unsigned long long d) {
@@ -36,8 +37,8 @@ int main() {
   uart_init();
   printf("DRAM test program.\n");
 
-  while(1) {
-    printf("Write block @%lx using key %llx\n", waddr, wkey);
+  while(error_cnt <= 10) {
+    printf("Write block @%x using key %x\n", waddr, wkey);
     for(i=0; i<STEP_SIZE; i++) {
       *(addr_base + waddr) = wkey;
       waddr = (waddr == addr_mask) ? 0 : waddr + 1;
@@ -47,17 +48,15 @@ int main() {
     if(distance < VERIFY_DISTANCE) distance++;
 
     if(distance == VERIFY_DISTANCE) {
-      printf("Check block @%lx using key %llx\n", raddr, rkey);
+      printf("Check block @%x using key %x\n", raddr, rkey);
       for(i=0; i<STEP_SIZE; i++) {
         unsigned long long rd = *(addr_base + raddr);
         if(rkey != rd) {
-          printf("Error! key %llx stored @%lx does not match with %llx\n", rd, raddr, rkey);
+          printf("Error! key %x stored @%x does not match with %x\n", rd, raddr, rkey);
           error_cnt++;
-          exit(1);
         }
         raddr = (raddr == addr_mask) ? 0 : raddr + 1;
         rkey = lfsr64(rkey);
-        if(error_cnt > 10) exit(1);
       }
     }
   }

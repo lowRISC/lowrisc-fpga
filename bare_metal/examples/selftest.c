@@ -12,6 +12,7 @@
 #include "encoding.h"
 #include "bits.h"
 #include "minion_lib.h"
+#include "mini-printf.h"
 #include "sdhci-minion-hash-md5.h"
 
 int strcmp (const char *s1, const char *s2)
@@ -221,7 +222,7 @@ int sdram_test() {
 
   printf("DRAM test program.\n");
 
-  while(1) {
+  while(error_cnt <= 10) {
     printf("Write block @%lx using key %llx\n", waddr, wkey);
     for(i=0; i<STEP_SIZE; i++) {
       *(addr_base + waddr) = wkey;
@@ -238,11 +239,9 @@ int sdram_test() {
         if(rkey != rd) {
           printf("Error! key %llx stored @%lx does not match with %llx\n", rd, raddr, rkey);
           error_cnt++;
-          exit(1);
         }
         raddr = (raddr == addr_mask) ? 0 : raddr + 1;
         rkey = lfsr64(rkey);
-        if(error_cnt > 10) exit(1);
       }
     }
   }
@@ -318,8 +317,8 @@ int trace_main() {
 // 4K size read burst
 #define SD_READ_SIZE 4096
 
-static uint8_t *boot_file_buf = (uint8_t *)((uint64_t *)(DEV_MAP__mem__BASE)) + ((uint64_t)DEV_MAP__mem__MASK + 1) - MAX_FILE_SIZE; // at the end of DDR space
-static uint8_t *memory_base = (uint8_t *)((uint64_t *)(DEV_MAP__mem__BASE));
+static uint8_t *boot_file_buf = (uint8_t *)((uint64_t *)(MEM_BASE)) + ((uint64_t)MEM_SIZE) - MAX_FILE_SIZE; // at the end of DDR space
+static uint8_t *memory_base = (uint8_t *)((uint64_t *)(MEM_BASE));
 static char kernel[32];
 
 // boot the Linux kernel (from SD or QSPI FLASH)
@@ -567,26 +566,20 @@ void minion_dispatch(const char *ucmd)
 	sd_clk_div(data);
 	break;
       case 'd':
-	printf("DEV_MAP__io_ext_bram__BASE = %x\n", DEV_MAP__io_ext_bram__BASE);
-	printf("DEV_MAP__io_ext_bram__MASK = %x\n", DEV_MAP__io_ext_bram__MASK);
-	printf("DEV_MAP__mem__BASE = %x\n", DEV_MAP__mem__BASE);
-	printf("DEV_MAP__mem__MASK = %x\n", DEV_MAP__mem__MASK);
+	printf("BRAM_BASE = %x\n", BRAM_BASE);
+	printf("BRAM_SIZE = %x\n", BRAM_SIZE);
+	printf("MEM_BASE = %x\n", MEM_BASE);
+	printf("MEM_SIZE = %x\n", MEM_SIZE);
 #ifdef ADD_FLASH
-	printf("DEV_MAP__io_ext_flash__BASE = %x\n", DEV_MAP__io_ext_flash__BASE);
-	printf("DEV_MAP__io_ext_flash__MASK = %x\n", DEV_MAP__io_ext_flash__MASK);
+	printf("FLASH_BASE = %x\n", FLASH_BASE);
+	printf("FLASH_SIZE = %x\n", FLASH_SIZE);
 #endif
-	printf("DEV_MAP__io_int_prci0__BASE = %x\n", DEV_MAP__io_int_prci0__BASE);
-	printf("DEV_MAP__io_int_prci0__MASK = %x\n", DEV_MAP__io_int_prci0__MASK);
-	printf("DEV_MAP__io_int_rtc__BASE = %x\n", DEV_MAP__io_int_rtc__BASE);
-	printf("DEV_MAP__io_int_rtc__MASK = %x\n", DEV_MAP__io_int_rtc__MASK);
-	printf("DEV_MAP__io_ext_uart__BASE = %x\n", DEV_MAP__io_ext_uart__BASE);
-	printf("DEV_MAP__io_ext_uart__MASK = %x\n", DEV_MAP__io_ext_uart__MASK);
+	printf("UART_BASE = %x\n", UART_BASE);
+	printf("UART_SIZE = %x\n", UART_SIZE);
 #ifdef ADD_SPI	
-	printf("DEV_MAP__io_ext_spi__BASE = %x\n", DEV_MAP__io_ext_spi__BASE);
-	printf("DEV_MAP__io_ext_spi__MASK = %x\n", DEV_MAP__io_ext_spi__MASK);
+	printf("SPI_BASE = %x\n", SPI_BASE);
+	printf("SPI_SIZE = %x\n", SPI_SIZE);
 #endif	
-	printf("DEV_MAP__io_int_bootrom__BASE = %x\n", DEV_MAP__io_int_bootrom__BASE);
-	printf("DEV_MAP__io_int_bootrom__MASK = %x\n", DEV_MAP__io_int_bootrom__MASK);
 	break;
       case 'D':
 	show_dir(ucmd+1);

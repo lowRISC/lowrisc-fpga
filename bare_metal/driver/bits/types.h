@@ -120,35 +120,7 @@ __extension__ typedef unsigned long long int __u_quad_t;
 #endif
 #include <bits/typesizes.h>	/* Defines __*_T_TYPE macros.  */
 
-
-__STD_TYPE __DEV_T_TYPE __dev_t;	/* Type of device numbers.  */
-__STD_TYPE __UID_T_TYPE __uid_t;	/* Type of user identifications.  */
-__STD_TYPE __GID_T_TYPE __gid_t;	/* Type of group identifications.  */
-__STD_TYPE __INO_T_TYPE __ino_t;	/* Type of file serial numbers.  */
-__STD_TYPE __INO64_T_TYPE __ino64_t;	/* Type of file serial numbers (LFS).*/
-__STD_TYPE __MODE_T_TYPE __mode_t;	/* Type of file attribute bitmasks.  */
-__STD_TYPE __NLINK_T_TYPE __nlink_t;	/* Type of file link counts.  */
-__STD_TYPE __OFF_T_TYPE __off_t;	/* Type of file sizes and offsets.  */
-__STD_TYPE __OFF64_T_TYPE __off64_t;	/* Type of file sizes and offsets (LFS).  */
-__STD_TYPE __PID_T_TYPE __pid_t;	/* Type of process identifications.  */
-__STD_TYPE __FSID_T_TYPE __fsid_t;	/* Type of file system IDs.  */
-__STD_TYPE __CLOCK_T_TYPE __clock_t;	/* Type of CPU usage counts.  */
-__STD_TYPE __RLIM_T_TYPE __rlim_t;	/* Type for resource measurement.  */
-__STD_TYPE __RLIM64_T_TYPE __rlim64_t;	/* Type for resource measurement (LFS).  */
-__STD_TYPE __ID_T_TYPE __id_t;		/* General type for IDs.  */
-__STD_TYPE __TIME_T_TYPE __time_t;	/* Seconds since the Epoch.  */
-__STD_TYPE __USECONDS_T_TYPE __useconds_t; /* Count of microseconds.  */
-__STD_TYPE __SUSECONDS_T_TYPE __suseconds_t; /* Signed count of microseconds.  */
-
 __STD_TYPE __DADDR_T_TYPE __daddr_t;	/* The type of a disk address.  */
-__STD_TYPE __KEY_T_TYPE __key_t;	/* Type of an IPC key.  */
-
-/* Clock ID used in clock and timer functions.  */
-__STD_TYPE __CLOCKID_T_TYPE __clockid_t;
-
-/* Timer ID returned by `timer_create'.  */
-__STD_TYPE __TIMER_T_TYPE __timer_t;
-
 /* Type to represent block size.  */
 __STD_TYPE __BLKSIZE_T_TYPE __blksize_t;
 
@@ -163,7 +135,6 @@ __STD_TYPE __FSBLKCNT_T_TYPE __fsblkcnt_t;
 __STD_TYPE __FSBLKCNT64_T_TYPE __fsblkcnt64_t;
 
 /* Type to count file system nodes.  */
-__STD_TYPE __FSFILCNT_T_TYPE __fsfilcnt_t;
 __STD_TYPE __FSFILCNT64_T_TYPE __fsfilcnt64_t;
 
 /* Type of miscellaneous file system fields.  */
@@ -178,7 +149,6 @@ __STD_TYPE __SYSCALL_ULONG_TYPE __syscall_ulong_t;
 
 /* These few don't really vary by system, they always correspond
    to one of the other defined types.  */
-typedef __off64_t __loff_t;	/* Type of file sizes and offsets (LFS).  */
 typedef __quad_t *__qaddr_t;
 typedef char *__caddr_t;
 

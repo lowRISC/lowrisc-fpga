@@ -55,6 +55,7 @@
 #include <elf.h>
 #include <string.h>
 #include <stdio.h>
+#include "mini-printf.h"
 #include "sdhci-minion-hash-md5.h"
 
 #ifndef IS_ELF64
