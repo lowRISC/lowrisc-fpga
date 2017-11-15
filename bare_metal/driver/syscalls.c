@@ -66,24 +66,16 @@ void tohost_exit(long code)
     ;
 }
 
-static char trap_rpt_buf [256];
-
 long handle_trap(long cause, long epc, long regs[32])
 {
   int* csr_insn;
     // do some report
-    snprintf(trap_rpt_buf, sizeof(trap_rpt_buf), "mcause=%0x\n", cause);
-    uart_send_string(trap_rpt_buf);
-    snprintf(trap_rpt_buf, sizeof(trap_rpt_buf), "mepc=%0x\n", epc);
-    uart_send_string(trap_rpt_buf);
-    snprintf(trap_rpt_buf, sizeof(trap_rpt_buf), "mbadaddr=%0x\n", read_csr_safe(mbadaddr));
-    uart_send_string(trap_rpt_buf);
-    snprintf(trap_rpt_buf, sizeof(trap_rpt_buf), "einsn=%0x\n", *(int*)epc);
-    uart_send_string(trap_rpt_buf);
-    snprintf(trap_rpt_buf, sizeof(trap_rpt_buf), "sp=%0x\n", regs[2]);
-    uart_send_string(trap_rpt_buf);
-    snprintf(trap_rpt_buf, sizeof(trap_rpt_buf), "tp=%0x\n", regs[4]);
-    uart_send_string(trap_rpt_buf);
+    printf("mcause=%x\n", cause);
+    printf("mepc=%x\n", epc);
+    printf("mbadaddr=%x\n", read_csr_safe(mbadaddr));
+    printf("einsn=%x\n", *(int*)epc);
+    printf("sp=%x\n", regs[2]);
+    printf("tp=%x\n", regs[4]);
     tohost_exit(1337);
 }
 

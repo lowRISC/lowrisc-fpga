@@ -33,7 +33,7 @@ default: all
 
 TARGETS = boot dram hello sdcard trace jump flash tag selftest
 
-DRIVER_TARGETS = syscalls spi uart memory memcpy memset strcpy strlen strnlen wordcopy elf diskio ff minion_helper sdhci-minion-hash-md5 mini-printf
+DRIVER_TARGETS = syscalls spi uart memory memcpy memset strcpy strlen strnlen wordcopy elf diskio ff minion_helper sdhci-minion-hash-md5 mini-printf random
 
 HEADERS += $(wildcard $(DRIVER_DIR)/*.h) $(GEN_DIR)/consts.hpp
 

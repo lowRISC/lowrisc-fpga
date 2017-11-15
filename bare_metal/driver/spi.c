@@ -1,6 +1,7 @@
 // See LICENSE for license details.
 
 #include "spi.h"
+#ifdef SPI_BASE
 
 #define GetBit(r, p) (((r) & (1 <<p)) >> p)
 
@@ -74,3 +75,4 @@ void spi_deselect_slave(uint8_t id) {
   *(spi_base_ptr + SPI_SSR) = 0xFFFFFFFF;
 }
 
+#endif // SPI_BASE
