@@ -97,8 +97,81 @@ static void init_tls()
   memset(thread_pointer + tdata_size, 0, tbss_size);
 }
 
+size_t err = 0, ddr = 0, rom = 0, bram = 0, intc = 0, spi = 0, uart = 0;
+
 void _init(int cid, int nc)
 {
+  size_t unknown = 0;
+  char *unknownstr, *config = (char *)0x10000;
+  for (int i = 128; i < 4096; i++)
+    {
+      char ch = config[i] & 0x7f; 
+      if (ch == '@')
+        {
+          int j = i+1;
+          unsigned addr = 0;
+          while ((config[j] >= '0' && config[j] <= '9') || (config[j] >= 'a' && config[j] <= 'f'))
+            {
+              int hex = config[j] - '0';
+              if (hex > 9) hex = config[j] - 'a' + 10;
+              addr = (addr << 4) | hex;
+              j++;
+            }
+          j = i - 1;
+          while ((config[j] >= 'a' && config[j] <= 'z') || config[j] == '-')
+            j--;
+          if ((++j < i) && addr)
+            {
+              uint32_t label = (config[j]<<24) | (config[j+1]<<16) | (config[j+2]<<8) |(config[j+3]);
+              switch (label)
+                {
+                case 'memo':
+                  ddr = addr;
+                  break;
+                case 'bram':
+                  bram = addr;
+                  break;
+#if 0
+                case 'clin':
+                  clin = addr;
+                  break;
+#endif
+                case 'erro':
+                  err = addr;
+                  break;
+                case 'inte':
+                  intc = addr;
+                  break;
+                case 'rom@':
+                  rom = addr;
+                  break;
+                case 'seri':
+                  uart = addr;
+                  break;
+                case 'spi@':
+                  spi = addr;
+                  break;
+                default:
+                  unknown = addr;
+                  unknownstr = config+j;
+                  break;
+                }
+            }
+        }
+    }
+  if (uart)
+    {
+      uart_init((void *)uart);
+      printf("Serial controller start 0x%x\n", uart);
+      if (err) printf("Error device start 0x%x\n", err);
+      if (rom) printf("ROM start 0x%x\n", rom);
+      if (bram) printf("Block RAM start 0x%x\n", bram);
+      if (ddr) printf("DDR memory start 0x%x\n", ddr);
+      if (intc) printf("Interrupt controller start 0x%x\n", intc);
+      if (spi) printf("SPI controller start 0x%x\n", spi);
+      if (unknown)
+        printf("Unknown %s, start = 0x%x\n", unknownstr, unknown);
+    }
   /*
   init_tls();
   thread_entry(cid, nc);

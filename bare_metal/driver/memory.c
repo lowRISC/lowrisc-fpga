@@ -3,15 +3,11 @@
 #include "memory.h"
 
 volatile uint64_t * get_bram_base() {
-#ifdef BRAM_BASE
-  return (uint64_t *)BRAM_BASE;
-#else
-  return (uint64_t *)0;         /* boot ROM, raise error */
-#endif
+  return (uint64_t *)bram;
 }
 
 volatile uint64_t * get_ddr_base() {
-  return (uint64_t *)(MEM_BASE);
+  return (uint64_t *)(ddr);
 }
 
 volatile uint64_t  get_ddr_size() {

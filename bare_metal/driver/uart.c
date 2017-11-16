@@ -2,9 +2,11 @@
 
 #include "uart.h"
 
-volatile uint32_t *uart_base_ptr = (uint32_t *)(UART_BASE);
+volatile uint32_t *uart_base_ptr;
 
-void uart_init() {
+void uart_init(void *base) {
+    uart_base_ptr = (uint32_t *)base;
+  
   // set 0x0080 to UART.LCR to enable DLL and DLM write
   // configure baud rate
   *(uart_base_ptr + UART_LCR) = 0x0080;

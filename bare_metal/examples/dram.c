@@ -14,8 +14,6 @@
 
 #define __version__ "4.3.0"
 
-#include "uart.h"
-#include "mini-printf.h"
 #include <stdlib.h>
 #include <limits.h>
 #include <stddef.h>
@@ -26,6 +24,9 @@
 #include <string.h>
 #include <errno.h>
 #include <limits.h>
+#include "memory.h"
+#include "uart.h"
+#include "mini-printf.h"
 
 #define rand32() ((unsigned int) rand() | ( (unsigned int) rand() << 16))
 
@@ -644,16 +645,15 @@ int testrange(void volatile *aligned, size_t bufsize, ul loops, int narrow) {
 
 int main()
 {
-    uart_init();
     uart_send_string("\nBare metal DRAM test\n");
     printf("memtester version " __version__ " (%d-bit)\n", UL_LEN);
     printf("Copyright (C) 2001-2012 Charles Cazabon.\n");
     printf("Licensed under the GNU General Public License version 2 (only).\n");
     printf("\n");
-    testrange((void volatile *) 0x4000C000, 0x4000, 1, 1);
+    testrange((void volatile *) bram + 0xC000, 0x4000, 1, 1);
 #ifdef ETH_BASE
     testrange((void volatile *) ETH_BASE+0x1000, 0x800, 1, 0);
     testrange((void volatile *) ETH_BASE+0x1800, 0x800, 1, 0);
 #endif    
-    testrange((void volatile *) MEM_BASE, 0x8000000, 1, 1);
+    testrange((void volatile *) ddr, 0x8000000, 1, 1);
 }

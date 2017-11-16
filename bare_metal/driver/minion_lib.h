@@ -38,7 +38,6 @@ void sd_setting(int setting);
 void sd_cmd_start(int sd_cmd);
 
 extern int printf (const char *, ...);
-extern void uart_init (void);
 extern void uart_send (uint8_t);
 extern void uart_send_string (const char *);
 extern void uart_send_buf (const char *, const int32_t);
@@ -48,7 +47,6 @@ extern uint8_t uart_check_read_irq (void);
 extern void uart_enable_read_irq (void);
 extern void uart_disable_read_irq (void);
 extern void uart_send (uint8_t data);
-extern void uart_init (void);
 extern void uart_send_buf (const char *buf, const const int32_t len);
 extern uint8_t uart_recv (void);
 extern void uart_send_string (const char *str);
