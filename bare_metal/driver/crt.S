@@ -122,7 +122,7 @@ _start:
   li a1, 1
 1:bgeu a0, a1, 1b
 
-  li a1, 0x4000C000
+  li a1, 0x40010000
   add sp, a1, -8
 
   j _init

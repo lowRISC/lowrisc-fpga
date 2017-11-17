@@ -20,10 +20,11 @@ GEN_DIR = $(FPGA_DIR)/generated-src
 RISCV_PREFIX=riscv64-unknown-elf-
 RISCV_GCC = $(RISCV_PREFIX)gcc
 RISCV_DUMP = $(RISCV_PREFIX)objdump
-RISCV_GCC_OPTS = -march=rv64imafd -fpie -static -std=gnu99 -g -Os -ffast-math -fno-common -fno-builtin-printf -save-temps -I$(DRIVER_DIR) -I$(GEN_DIR) -I$(BASE_DIR)
+RISCV_GCC_OPTS = -static -std=gnu99 -g -Os -ffast-math -fno-common -fno-builtin-printf -I$(DRIVER_DIR) -I$(GEN_DIR) -I$(BASE_DIR)
 RISCV_DUMP_OPTS = -D -S -l
 RISCV_LINK = $(RISCV_PREFIX)gcc -T $(DRIVER_DIR)/test.ld
 RISCV_LINK_OPTS = -nostdlib -nostartfiles -ffast-math -Xlinker -M=mapfile
+# -march=rv64imafd
 
 #--------------------------------------------------------------------
 # Objects

@@ -24,10 +24,8 @@ int main (void)
 {
   FIL fil;                // File object
   FRESULT fr;             // FatFs return code
-  uint8_t *boot_file_buf = (uint8_t *)(get_ddr_base()) + ((uint64_t)MEM_SIZE) - MAX_FILE_SIZE; // at the end of DDR space
+  uint8_t *boot_file_buf = (uint8_t *)(get_ddr_base()) + ((uint64_t)get_ddr_size()) - MAX_FILE_SIZE; // at the end of DDR space
   uint8_t *memory_base = (uint8_t *)(get_ddr_base());
-
-  uart_init();
 
   printf("lowRISC boot program\n=====================================\n");
 
@@ -60,12 +58,12 @@ int main (void)
       }
   } while(!(fr || br == 0));
 
-  printf("Load %lld bytes to memory address %llx from boot.bin of %lld bytes.\n", fsize, boot_file_buf, fil.fsize);
+  printf("Load %d bytes to memory address %x from boot.bin of %d bytes.\n", fsize, boot_file_buf, fil.fsize);
 
   // read elf
   printf("load elf to DDR memory\n");
   if(br = load_elf(boot_file_buf, fil.fsize))
-    printf("elf read failed with code %0d", br);
+    printf("elf read failed with code %d", br);
 
   // Close the file
   if(f_close(&fil)) {

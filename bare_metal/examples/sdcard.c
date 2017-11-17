@@ -12,7 +12,6 @@
 FATFS FatFs;   /* Work area (file system object) for logical drive */
 
 void board_mmc_power_init(void);
-void minion_dispatch(const char *ucmd);
 
 int main (void)
 {
@@ -22,10 +21,10 @@ int main (void)
   uint32_t br;            /* Read count */
   uint32_t i;
 
-  uart_init();
-  printf("SD test program (addr=%x)\n", SPI_BASE);
+#ifdef SD_BASE
+  printf("SD test program (addr=%x)\n", SD_BASE);
   board_mmc_power_init();
-  
+#endif
   /* Register work area to the default drive */
   if(f_mount(&FatFs, "", 1)) {
     printf("Fail to mount SD driver!\n");

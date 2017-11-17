@@ -15,7 +15,7 @@ volatile uint64_t * get_ddr_base() {
 }
 
 volatile uint64_t  get_ddr_size() {
-  return (uint64_t)MEM_SIZE;
+  return (uint64_t)0x8000000;
 }
 
 volatile uint64_t * get_flash_base() {

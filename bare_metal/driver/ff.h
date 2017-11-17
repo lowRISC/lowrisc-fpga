@@ -356,18 +356,28 @@ extern "C" {
 
   /*--------------------------------*/
   /* Multi-byte word access macros  */
-
-#if _WORD_ACCESS == 1   /* Enable word access to the FAT structure */
-#define LD_WORD(ptr)        (uint16_t)(*(uint16_t*)(uint8_t*)(ptr))
-#define LD_DWORD(ptr)       (uint32_t)(*(uint32_t*)(uint8_t*)(ptr))
-#define ST_WORD(ptr,val)    *(uint16_t*)(uint8_t*)(ptr)=(uint16_t)(val)
-#define ST_DWORD(ptr,val)   *(uint32_t*)(uint8_t*)(ptr)=(uint32_t)(val)
-#else                   /* Use byte-by-byte access to the FAT structure */
-#define LD_WORD(ptr)        (uint16_t)(((uint16_t)*((uint8_t*)(ptr)+1)<<8)|(uint16_t)*(uint8_t*)(ptr))
-#define LD_DWORD(ptr)       (uint32_t)(((uint32_t)*((uint8_t*)(ptr)+3)<<24)|((uint32_t)*((uint8_t*)(ptr)+2)<<16)|((uint16_t)*((uint8_t*)(ptr)+1)<<8)|*(uint8_t*)(ptr))
-#define ST_WORD(ptr,val)    *(uint8_t*)(ptr)=(uint8_t)(val); *((uint8_t*)(ptr)+1)=(uint8_t)((uint16_t)(val)>>8)
-#define ST_DWORD(ptr,val)   *(uint8_t*)(ptr)=(uint8_t)(val); *((uint8_t*)(ptr)+1)=(uint8_t)((uint16_t)(val)>>8); *((uint8_t*)(ptr)+2)=(uint8_t)((uint32_t)(val)>>16); *((uint8_t*)(ptr)+3)=(uint8_t)((uint32_t)(val)>>24)
-#endif
+  /* Use byte-by-byte access to the FAT structure */
+  /* converted to functions due to compiler bug (?) */
+  
+static uint16_t LD_WORD(const uint8_t *ptr)
+{
+  return (uint16_t)(((uint16_t)*((uint8_t*)(ptr)+1)<<8)|(uint16_t)*(uint8_t*)(ptr));
+}
+  
+static uint32_t LD_DWORD(const uint8_t *ptr)
+{
+  return (uint32_t)(((uint32_t)*((uint8_t*)(ptr)+3)<<24)|((uint32_t)*((uint8_t*)(ptr)+2)<<16)|((uint16_t)*((uint8_t*)(ptr)+1)<<8)|*(uint8_t*)(ptr));
+}
+  
+static void ST_WORD(uint8_t *ptr, uint16_t val)
+  {
+    *(uint8_t*)(ptr)=(uint8_t)(val); *((uint8_t*)(ptr)+1)=(uint8_t)((uint16_t)(val)>>8);
+  }
+  
+static void ST_DWORD(uint8_t *ptr, uint32_t val)
+{
+  *(uint8_t*)(ptr)=(uint8_t)(val); *((uint8_t*)(ptr)+1)=(uint8_t)((uint16_t)(val)>>8); *((uint8_t*)(ptr)+2)=(uint8_t)((uint32_t)(val)>>16); *((uint8_t*)(ptr)+3)=(uint8_t)((uint32_t)(val)>>24);
+}
 
 #ifdef __cplusplus
 }

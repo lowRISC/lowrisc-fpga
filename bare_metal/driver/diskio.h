@@ -64,7 +64,7 @@ extern "C" {
 
   /*---------------------------------------*/
   /* Prototypes for disk control functions */
-
+#ifdef SD_BASE
   uint8_t sd_send(uint8_t dat);
   void sd_init(void);
   void sd_disable(void) ;
@@ -73,6 +73,7 @@ extern "C" {
   int rcvr_datablock (uint8_t *buff,uint32_t btr);
   int xmit_datablock (const uint8_t *buff, uint8_t token);
   uint8_t send_cmd (uint8_t cmd, uint32_t arg, uint32_t flag);
+#endif  
   DSTATUS disk_initialize (uint8_t pdrv);
   DSTATUS disk_status (uint8_t pdrv);
   DRESULT disk_read (uint8_t pdrv, uint8_t* buff, uint32_t sector, uint32_t count);

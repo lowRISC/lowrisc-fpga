@@ -8,7 +8,6 @@
 #include "ff.h"
 #include "uart.h"
 #include "memory.h"
-#include "trace.h"
 #include "encoding.h"
 #include "bits.h"
 #include "minion_lib.h"
@@ -301,23 +300,13 @@ int memory_size (void)
     }
 }
 
-// A hello world trace program
-
-int trace_main() {
-  STM_TRACE(0x1234, 0xdeadbeef);
-
-  trace_event0();
-  trace_event1(23);
-  trace_event2(0xabcd, 0x0123456789abcdef);
-}
-
 // max size of file image is 16M
 #define MAX_FILE_SIZE 0x1000000
 
 // 4K size read burst
 #define SD_READ_SIZE 4096
 
-static uint8_t *boot_file_buf = (uint8_t *)((uint64_t *)(MEM_BASE)) + ((uint64_t)MEM_SIZE) - MAX_FILE_SIZE; // at the end of DDR space
+static uint8_t *boot_file_buf = (uint8_t *)((uint64_t *)(MEM_BASE)) + ((uint64_t)get_ddr_size()) - MAX_FILE_SIZE; // at the end of DDR space
 static uint8_t *memory_base = (uint8_t *)((uint64_t *)(MEM_BASE));
 static char kernel[32];
 
@@ -568,8 +557,8 @@ void minion_dispatch(const char *ucmd)
       case 'd':
 	printf("BRAM_BASE = %x\n", BRAM_BASE);
 	printf("BRAM_SIZE = %x\n", BRAM_SIZE);
-	printf("MEM_BASE = %x\n", MEM_BASE);
-	printf("MEM_SIZE = %x\n", MEM_SIZE);
+	printf("DDR_BASE = %x\n", MEM_BASE);
+	printf("DDR_SIZE = %x\n", get_ddr_size());
 #ifdef ADD_FLASH
 	printf("FLASH_BASE = %x\n", FLASH_BASE);
 	printf("FLASH_SIZE = %x\n", FLASH_SIZE);
@@ -666,6 +655,7 @@ void minion_dispatch(const char *ucmd)
 	    addr += 4;
 	  }
 	break;
+#ifdef HID_BASE
       case 'R':
 	nxt = scan(ucmd+1, &addr, 16);
 	addr &= ~3;
@@ -676,12 +666,13 @@ void minion_dispatch(const char *ucmd)
 	    myputchar(' ');
 	    myputhex(addr, 8);
 	    myputchar(':');
-	    data = queue_read((unsigned *)addr);
+	    data = *(uint32_t *)(HID_BASE+addr);
 	    myputhex(data, 8);
 	    myputchar('\n');
 	    addr += 4;
 	  }
 	break;
+#endif        
       case 's':
 	nxt = scan(ucmd+1, &sdcmd, 16);
 	myputchar('s');
@@ -719,6 +710,7 @@ void minion_dispatch(const char *ucmd)
       case 'u':
 	unmount();
 	break;
+#ifdef HID_BASE        
       case 'W':
 	nxt = scan(ucmd+1, &addr, 16);
 	myputchar('W');
@@ -728,8 +720,9 @@ void minion_dispatch(const char *ucmd)
 	myputchar(',');
 	myputhex(data, 8);
 	myputchar('\n');
-	queue_write((unsigned *)addr, data, 0);
+	*(uint32_t *)(HID_BASE+addr) = data;
 	break;
+#endif        
       case 'q':
 	break;
       default: printf("%c: unknown command\n");
@@ -738,20 +731,22 @@ void minion_dispatch(const char *ucmd)
 
 int main (void)
 {
-  trace_main();
-  uart_init();
-  board_mmc_power_init();  
+#ifdef HID_BASE  
+  board_mmc_power_init();
+#endif  
   do {
-    if (queue_read((unsigned *)0x700000) & 1)
+#ifdef HID_BASE  
+    if (sd_base[31] & 1)
       {
 	uart_send_string("Jumping to DRAM because SW0 is high ..\r\n");
 	just_jump();
       }
-    if (queue_read((unsigned *)0x700000) & 2)
+    if (sd_base[31] & 2)
       {
 	uart_send_string("Booting from FLASH because SW1 is high ..\r\n");
 	boot(prepare(""));
       }
+#endif  
     uart_send_string("selftest> ");
     mygets(linbuf);
     minion_dispatch(linbuf);
