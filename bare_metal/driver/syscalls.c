@@ -217,7 +217,7 @@ void _init(int cid, int nc)
       if (bram) printf("Block RAM start 0x%x\n", bram);
       if (ddr) printf("DDR memory start 0x%x\n", ddr);
       if (intc) printf("Interrupt controller start 0x%x\n", intc);
-      if (spi && (spi==SPI_BASE)) printf("SPI controller start 0x%x\n", spi);
+      if (spi) printf("SPI controller start 0x%x\n", spi);
       if (unknown)
         printf("Unknown %s, start = 0x%x\n", unknownstr, unknown);
     }

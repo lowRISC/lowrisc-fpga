@@ -657,5 +657,5 @@ int main()
     testrange((void volatile *) ETH_BASE+0x1000, 0x800, 1, 0);
     testrange((void volatile *) ETH_BASE+0x1800, 0x800, 1, 0);
 #endif    
-    testrange((void volatile *) MEM_BASE, 0x8000000, 1, 1);
+    testrange((void volatile *) ddr, 0x8000000, 1, 1);
 }
