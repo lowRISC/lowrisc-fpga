@@ -144,7 +144,7 @@ static void init_tls()
   memset(thread_pointer + tdata_size, 0, tbss_size);
 }
 
-size_t err = 0, ddr = 0, rom = 0, bram = 0, intc = 0, spi = 0, uart = 0, clin = 0, dumh = 0;
+size_t err = 0, eth = 0, ddr = 0, rom = 0, bram = 0, intc = 0, spi = 0, uart = 0, clin = 0, dumh = 0;
 
 void _init(int cid, int nc)
 {
@@ -187,6 +187,9 @@ void _init(int cid, int nc)
                 case 'erro':
                   err = addr;
                   break;
+                case 'eth@':
+                  eth = addr;
+                  break;
                 case 'inte':
                   intc = addr;
                   break;
@@ -211,7 +214,7 @@ void _init(int cid, int nc)
     {
       uart_init((void *)uart);
       printf("Serial controller start 0x%x\n", uart);
-      if (dumh) printf("Dummy host start 0x%x\n", dumh);
+      if (eth) printf("Ethernet start 0x%x\n", eth);
       if (err) printf("Error device start 0x%x\n", err);
       if (rom) printf("ROM start 0x%x\n", rom);
       if (bram) printf("Block RAM start 0x%x\n", bram);

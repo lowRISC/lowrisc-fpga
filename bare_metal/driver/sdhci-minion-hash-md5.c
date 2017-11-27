@@ -10,7 +10,6 @@
 #endif
 #include "sdhci-minion-hash-md5.h"
 #include "mini-printf.h"
-#include "minion_lib.h"
 
 static __attribute__ ((always_inline)) __inline__ uint32_t rotl32(uint32_t x, unsigned n)
 {
@@ -151,8 +150,6 @@ void md5_begin(md5_ctx_t *ctx)
  ctx->total64 = 0;
  ctx->process_block = md5_process_block64;
 }
-
-enum {hash_length = 16};
 
 static void minion_bin2hex(char *p, const char *cp, int count)
 {

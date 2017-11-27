@@ -32,9 +32,9 @@ RISCV_LINK_OPTS = -nostdlib -nostartfiles -ffast-math -Xlinker -M=mapfile
 
 default: all
 
-TARGETS = boot dram hello sdcard trace jump flash tag selftest
+TARGETS = boot dram hello sdcard trace jump flash tag selftest eth
 
-DRIVER_TARGETS = syscalls spi uart memory memcpy memset strcpy strlen strnlen wordcopy elf diskio ff minion_helper sdhci-minion-hash-md5 mini-printf random
+DRIVER_TARGETS = syscalls spi uart memory memcmp memcpy memset strcpy strlen strnlen wordcopy elf diskio ff minion_helper sdhci-minion-hash-md5 mini-printf random
 
 HEADERS += $(wildcard $(DRIVER_DIR)/*.h) $(GEN_DIR)/consts.hpp
 
