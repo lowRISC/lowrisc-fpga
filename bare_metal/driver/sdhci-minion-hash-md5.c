@@ -182,6 +182,6 @@ uint8_t *hash_buf(const void *in_buf, int count)
  md5_hash(&context, in_buf, count);
  md5_end(&context);
  hash_value = hash_bin_to_hex(&context);
- printf("md5(%p,%d) = %s\n", in_buf, count, hash_value);
+ // printf("md5(%p,%d) = %s\n", in_buf, count, hash_value);
  return hash_value;
 }
