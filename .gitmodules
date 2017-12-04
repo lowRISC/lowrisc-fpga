@@ -13,3 +13,6 @@
 [submodule "board/zed"]
 	path = board/zed
 	url = https://github.com/furkanturan/lowrisc-zed.git
+[submodule "micropython"]
+	path = micropython
+	url = https://github.com/lowRISC/micropython.git
