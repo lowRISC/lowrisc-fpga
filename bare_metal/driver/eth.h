@@ -8,6 +8,7 @@
 
 /* Register offsets for the EmacLite Core */
 #define TXBUFF_OFFSET       0x1000          /* Transmit Buffer */
+#define AXISBUFF_OFFSET     0x1800          /* Transmit Buffer */
 
 #define MACLO_OFFSET        0x0800          /* MAC address low 32-bits */
 #define MACHI_OFFSET        0x0804          /* MAC address high 16-bits and MAC ctrl */
@@ -29,6 +30,7 @@
 #define MACHI_DATA_DLY_MASK   0x00180000     /* Rx packet data buffer alignment delay */
 #define MACHI_ALLPACKETS_MASK 0x00200000     /* Rx all packets (promiscuous mode) */
 #define MACHI_IRQ_EN          0x00400000     /* Rx packet interrupt enable */
+#define MACHI_AXIS_EN         0x00800000     /* AXIS enable */
 
 /* MDIO Control Register Bit Masks */
 #define MDIOCTRL_MDIOCLK_MASK 0x00000001    /* MDIO Clock Mask */
@@ -43,12 +45,14 @@
 
 /* Receive Status Register (RSR) */
 #define RSR_RECV_DONE_MASK    0x00000001      /* Rx complete */
-#define RSR_RECV_ERR_MASK     0x00000002      /* Rx fcs_err bit */
+#define RSR_RECV_IRQ_MASK     0x00000002      /* Rx irq bit */
 
 /* Receive Packet Length Register (RPLR) */
 #define RPLR_LENGTH_MASK      0x0FFF0000      /* Rx packet length */
-#define RPLR_ERROR_MASK       0x40000000      /* Rx error mask */
-#define RPLR_FCS_ERROR_MASK   0x80000000      /* Rx FCS error mask */
+#define RPLR_ERROR_MASK       0x10000000      /* Rx error mask */
+#define RPLR_FCS_ERROR_MASK   0x20000000      /* Rx FCS error mask */
+#define AXIS_ERROR_MASK       0x40000000      /* Rx error mask */
+#define AXIS_FCS_ERROR_MASK   0x80000000      /* Rx FCS error mask */
 
 /* General Ethernet Definitions */
 #define HEADER_OFFSET       12              /* Offset to length field */

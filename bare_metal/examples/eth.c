@@ -28,6 +28,7 @@ int rxhead, rxtail, txhead, txtail;
 
 typedef struct inqueue_t {
   void *alloc;
+  void *alloc2;
   int rplr;
   int fcs;
 } inqueue_t;
@@ -204,15 +205,19 @@ static int copyin_pkt(void)
     {
       int rnd;
       uint32_t *alloc;
+      uint32_t *alloc2;
       rnd = ((length-1|3)+1); /* round to a multiple of 4 */
       alloc = sbrk(rnd);
+      alloc2 = sbrk(rnd);
       for (i = 0; i < rnd/4; i++)
         {
+	  alloc2[i] = axi_read(0x1800+(i<<2));
           alloc[i] = axi_read(RXBUFF_OFFSET+(i<<2));
         }
       rxbuf[rxhead].fcs = fcs;
       rxbuf[rxhead].rplr = rplr;
       rxbuf[rxhead].alloc = alloc;
+      rxbuf[rxhead].alloc2 = alloc2;
       rxhead = (rxhead + 1) % queuelen;
     }
   axi_write(RSR_OFFSET, 0); /* acknowledge */
@@ -307,9 +312,23 @@ static unsigned short csum(uint8_t *buf, int nbytes)
 static uintptr_t old_mstatus, old_mie;
 
 int main() {
+  int i;
+  static uint32_t axis_rslt;
   uip_ipaddr_t addr;
   uint32_t macaddr_lo, macaddr_hi;
   uart_init();
+  axi_write(MACHI_OFFSET, MACHI_AXIS_EN|MACHI_IRQ_EN|MACHI_ALLPACKETS_MASK|MACHI_DATA_DLY_MASK|MACHI_COOKED_MASK);
+  axi_write(TXBUFF_OFFSET, 0xFFFFFFFF);
+  axi_write(TXBUFF_OFFSET+4, 0xFFFFFFFF);
+  axi_write(TXBUFF_OFFSET+8, 0xDEADBEEF);
+  axi_write(TXBUFF_OFFSET+12, 0x55555555);
+  axi_write(TPLR_OFFSET,64);
+  while (axi_read(RSR_OFFSET) == 0)
+    ;
+  for (i = 0; i < 16; i++)
+    {
+      axis_rslt = axi_read(AXISBUFF_OFFSET+(i<<2));
+    }
   printf("Hello LowRISC! "__TIMESTAMP__"\n");
   rxbuf = (inqueue_t *)sbrk(sizeof(inqueue_t)*queuelen);
   txbuf = (outqueue_t *)sbrk(sizeof(outqueue_t)*queuelen);
@@ -377,7 +396,9 @@ int main() {
       }
     if (rxhead != rxtail)
       {
+	int i;
         uint32_t *alloc = rxbuf[rxtail].alloc;
+        uint32_t *alloc2 = rxbuf[rxtail].alloc2;
         int rplr = rxbuf[rxtail].rplr;
         int length, elength = ((rplr & RPLR_LENGTH_MASK) >> 16) - 4;
         int rxheader = alloc[HEADER_OFFSET >> 2];
@@ -387,6 +408,8 @@ int main() {
         printf("rxhead = %d, rxtail = %d\n", rxhead, rxtail);
         printf("elength = %d (rplr = %x)\n", elength, rplr);
 #endif
+        printf("elength = %d (xlength = %d)\n", elength, rplr&0xFFFF);
+	for (i = 0; i < 16; i++) printf("%x %x\n", alloc[i], alloc2[i]);
         if (rxbuf[rxtail].fcs != 0xc704dd7b)
           printf("RX FCS = %x\n", rxbuf[rxtail].fcs);
         switch (proto_type)
