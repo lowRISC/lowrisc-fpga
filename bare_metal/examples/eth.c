@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 #include "sdhci-minion-hash-md5.h"
 
@@ -41,6 +42,12 @@ typedef struct outqueue_t {
 } outqueue_t;
 
 outqueue_t *txbuf;
+
+typedef struct stats_t {
+  int good, bad;
+} stats_t;
+
+stats_t stats;
 
 #define VERBOSEXMIT
 #define UDP_DEBUG
@@ -235,20 +242,6 @@ static void lite_queue(void *buf, int length)
   txhead = (txhead+1) % queuelen;
 }
 
-static void lite_xmit(int length)
-{
-  int rslt;
- do
-   {
-     rslt = axi_read(TPLR_OFFSET) & TPLR_BUSY_MASK;
-#ifdef VERBOSEXMIT
-     printf("TX Status = %x\n", rslt);
-#endif
-   }
- while (rslt);
-  axi_write(TPLR_OFFSET,length);
-}
-
 // max size of file image is 10M
 #define MAX_FILE_SIZE (10<<20)
 
@@ -311,25 +304,49 @@ static unsigned short csum(uint8_t *buf, int nbytes)
 
 static uintptr_t old_mstatus, old_mie;
 
+#define rand32() ((unsigned int) rand() | ( (unsigned int) rand() << 16))
+
 int main() {
-  int i;
-  static uint32_t axis_rslt;
+    enum {tstcnt=375};
+  //  enum {tstcnt=255};
+  int i, waiting, match = 0, waitcnt = 0;
   uip_ipaddr_t addr;
   uint32_t macaddr_lo, macaddr_hi;
   uart_init();
-  axi_write(MACHI_OFFSET, MACHI_AXIS_EN|MACHI_IRQ_EN|MACHI_ALLPACKETS_MASK|MACHI_DATA_DLY_MASK|MACHI_COOKED_MASK);
+  /* AXIS enabled, bit-level digital loopback */
+  axi_write(MACHI_OFFSET, MACHI_AXIS_EN|MACHI_IRQ_EN|MACHI_ALLPACKETS_MASK|MACHI_DATA_DLY_MASK|MACHI_LOOPBACK_MASK|MACHI_COOKED_MASK);
+  axi_write(RSR_OFFSET, 0); /* clear pending receive packet, if any */
+  /* random inits */
+  for (i = 0; i < tstcnt*4; i += 4)
+    {
+    axi_write(TXBUFF_OFFSET+i, rand32());
+    axi_write(RXBUFF_OFFSET+i, i);
+    axi_write(AXISBUFF_OFFSET+i, i);
+    }
+  /* systematic inits */
   axi_write(TXBUFF_OFFSET, 0xFFFFFFFF);
   axi_write(TXBUFF_OFFSET+4, 0xFFFFFFFF);
   axi_write(TXBUFF_OFFSET+8, 0xDEADBEEF);
   axi_write(TXBUFF_OFFSET+12, 0x55555555);
-  axi_write(TPLR_OFFSET,64);
-  while (axi_read(RSR_OFFSET) == 0)
-    ;
-  for (i = 0; i < 16; i++)
+  /* launch the packet */
+  axi_write(TPLR_OFFSET,tstcnt*4);
+  /* wait for loopback to do its work */
+  do 
     {
-      axis_rslt = axi_read(AXISBUFF_OFFSET+(i<<2));
+      waiting = (axi_read(RSR_OFFSET) == 0);
     }
-  printf("Hello LowRISC! "__TIMESTAMP__"\n");
+  while ((waitcnt++ < tstcnt*10) && waiting);
+  for (i = 0; i < tstcnt; i++)
+    {
+      uint32_t xmit_rslt = axi_read(TXBUFF_OFFSET+(i<<2));
+      uint32_t mac_rslt = axi_read(RXBUFF_OFFSET+(i<<2));
+      uint32_t axis_rslt = axi_read(AXISBUFF_OFFSET+(i<<2));
+      if ((xmit_rslt != mac_rslt) || (xmit_rslt != axis_rslt))
+        printf("Buffer offset %d: xmit=%x, mac=%x, axis=%x\n", i, xmit_rslt, mac_rslt, axis_rslt);
+      else
+	++match;
+    }
+  printf("Hello LowRISC! "__TIMESTAMP__" selftest matches=%d/%d, delay = %d\n", match, tstcnt, waitcnt);
   rxbuf = (inqueue_t *)sbrk(sizeof(inqueue_t)*queuelen);
   txbuf = (outqueue_t *)sbrk(sizeof(outqueue_t)*queuelen);
   //  maskarray = (uint64_t *)sbrk(sizeof_maskarray);
@@ -396,11 +413,12 @@ int main() {
       }
     if (rxhead != rxtail)
       {
-	int i;
+	int i, bad = 0;
         uint32_t *alloc = rxbuf[rxtail].alloc;
         uint32_t *alloc2 = rxbuf[rxtail].alloc2;
         int rplr = rxbuf[rxtail].rplr;
         int length, elength = ((rplr & RPLR_LENGTH_MASK) >> 16) - 4;
+	int xlength = rplr&0xFFFF;
         int rxheader = alloc[HEADER_OFFSET >> 2];
         int proto_type = ntohs(rxheader) & 0xFFFF;
 #ifdef VERBOSE
@@ -408,8 +426,15 @@ int main() {
         printf("rxhead = %d, rxtail = %d\n", rxhead, rxtail);
         printf("elength = %d (rplr = %x)\n", elength, rplr);
 #endif
-        printf("elength = %d (xlength = %d)\n", elength, rplr&0xFFFF);
-	for (i = 0; i < 16; i++) printf("%x %x\n", alloc[i], alloc2[i]);
+	if (rplr & 0xD0000000)
+	  {
+	    printf("?%x\n", rplr >> 28);
+          }
+	for (i = 0; i < elength-4; i++) bad |= alloc[i] != alloc2[i];
+        if (bad)
+	  ++stats.bad;
+	else
+	  ++stats.good;
         if (rxbuf[rxtail].fcs != 0xc704dd7b)
           printf("RX FCS = %x\n", rxbuf[rxtail].fcs);
         switch (proto_type)
@@ -686,7 +711,11 @@ void process_udp_packet(const u_char *data, int ulen)
 #ifdef VERBOSE
             printf("Data Payload index %d\n", idx);
 #else
-            if (idx % 100 == 0) printf(".");
+            if (idx % 100 == 0)
+	      {
+		printf(".");
+		raw_udp_main(&stats, sizeof(stats_t));
+	      }
 #endif
             oldidx = idx;
           }
