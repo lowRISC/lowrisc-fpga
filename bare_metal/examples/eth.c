@@ -430,9 +430,23 @@ int main() {
 	  {
 	    printf("?%x\n", rplr >> 28);
           }
-	for (i = 0; i < elength-4; i++) bad |= alloc[i] != alloc2[i];
+	bad = (elength != xlength+4) || memcmp(alloc, alloc2, xlength);
         if (bad)
-	  ++stats.bad;
+	  {
+	    int i, first = -1;
+	    uint8_t *lft = (uint8_t *)alloc, *rght = (uint8_t *)alloc2;
+            if (elength != xlength+4)
+	      printf("elength = %d, xlength = %d\n", elength, xlength);
+	    for (i = 0; i < elength; i++)
+	      {
+	      if ((first < 0) && (lft[i] != rght[i]))
+		{
+	        first = i;
+		printf("Byte offset %d/%d: mac=%x, axis=%x\n", i, elength, lft[i], rght[i]);
+                }
+              }
+	    ++stats.bad;
+	  }
 	else
 	  ++stats.good;
         if (rxbuf[rxtail].fcs != 0xc704dd7b)
