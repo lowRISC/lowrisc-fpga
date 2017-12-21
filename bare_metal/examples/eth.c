@@ -1,3 +1,4 @@
+//#define SIM
 // A hello eth program
 #include "encoding.h"
 #include "bits.h"
@@ -29,9 +30,7 @@ int rxhead, rxtail, txhead, txtail;
 
 typedef struct inqueue_t {
   void *alloc;
-  void *alloc2;
   int rplr;
-  int fcs;
 } inqueue_t;
 
 inqueue_t *rxbuf;
@@ -202,9 +201,8 @@ void *sbrk(size_t len);
 static int copyin_pkt(void)
 {
   int i;
-  int fcs = axi_read(RFCS_OFFSET);
   int rplr = axi_read(RPLR_OFFSET);
-  int length = (rplr & RPLR_LENGTH_MASK) >> 16;
+  int length = rplr & RPLR_LENGTH_MASK2;
 #ifdef VERBOSE
       printf("length = %d (rplr = %x)\n", length, rplr);
 #endif      
@@ -212,19 +210,14 @@ static int copyin_pkt(void)
     {
       int rnd;
       uint32_t *alloc;
-      uint32_t *alloc2;
       rnd = ((length-1|3)+1); /* round to a multiple of 4 */
       alloc = sbrk(rnd);
-      alloc2 = sbrk(rnd);
       for (i = 0; i < rnd/4; i++)
         {
-	  alloc2[i] = axi_read(0x1800+(i<<2));
-          alloc[i] = axi_read(RXBUFF_OFFSET+(i<<2));
+          alloc[i] = axi_read(AXISBUFF_OFFSET+(i<<2));
         }
-      rxbuf[rxhead].fcs = fcs;
       rxbuf[rxhead].rplr = rplr;
       rxbuf[rxhead].alloc = alloc;
-      rxbuf[rxhead].alloc2 = alloc2;
       rxhead = (rxhead + 1) % queuelen;
     }
   axi_write(RSR_OFFSET, 0); /* acknowledge */
@@ -305,48 +298,75 @@ static unsigned short csum(uint8_t *buf, int nbytes)
 static uintptr_t old_mstatus, old_mie;
 
 #define rand32() ((unsigned int) rand() | ( (unsigned int) rand() << 16))
+  
+void loopback_test(int loops)
+  {
+    int j;
+    axi_write(MACHI_OFFSET, MACHI_LOOPBACK_MASK);
+    for (j = 1; j <= loops; j++)
+      {
+	enum {maxcnt=375};
+	int i, waiting, actualwait, match = 0, waitcnt = 0;
+	int tstcnt = 2 << j;
+	if (tstcnt > maxcnt) tstcnt = maxcnt; /* max length packet */
+#ifdef SIM
+#else
+	printf("Selftest iteration %d\n", j);
+#endif
+      /* AXIS enabled, bit-level digital loopback */
+      axi_write(RSR_OFFSET, 0); /* clear pending receive packet, if any */
+      /* random inits */
+#ifdef SIM
+#else
+      for (i = 0; i < tstcnt*4; i += 4)
+	{
+	axi_write(TXBUFF_OFFSET+i, rand32());
+	axi_write(RXBUFF_OFFSET+i, i);
+	axi_write(AXISBUFF_OFFSET+i, i);
+	}
+#endif
+      /* systematic inits */
+      axi_write(TXBUFF_OFFSET, 0xFFFFFFFF);
+      axi_write(TXBUFF_OFFSET+4, 0xFFFFFFFF);
+      axi_write(TXBUFF_OFFSET+8, 0xDEADBEEF);
+      axi_write(TXBUFF_OFFSET+12, 0x55555555);
+      /* launch the packet */
+      axi_write(TPLR_OFFSET,tstcnt*4);
+      /* wait for loopback to do its work */
+      do 
+	{
+	  waiting = (axi_read(RSR_OFFSET) == 0);
+	  if (waiting) actualwait = waitcnt;
+	}
+      while ((waitcnt++ < tstcnt) || waiting);
+      for (i = 0; i < tstcnt; i++)
+	{
+	  uint32_t xmit_rslt = axi_read(TXBUFF_OFFSET+(i<<2));
+	  uint32_t axis_rslt = axi_read(AXISBUFF_OFFSET+(i<<2));
+	  if (xmit_rslt != axis_rslt)
+	    {
+#ifdef SIM
+	      axi_write(MACHI_OFFSET, MACHI_LOOPBACK_MASK|MACHI_COOKED_MASK);
+#else
+	      printf("Buffer offset %d: xmit=%x, axis=%x\n", i, xmit_rslt, axis_rslt);
+#endif
+	    }
+	  else
+	    ++match;
+	}
+#ifdef SIM
+#else
+      printf("Selftest matches=%d/%d, delay = %d\n", match, tstcnt, actualwait);
+#endif
+      }
+  }
 
 int main() {
-    enum {tstcnt=375};
-  //  enum {tstcnt=255};
-  int i, waiting, match = 0, waitcnt = 0;
   uip_ipaddr_t addr;
   uint32_t macaddr_lo, macaddr_hi;
   uart_init();
-  /* AXIS enabled, bit-level digital loopback */
-  axi_write(MACHI_OFFSET, MACHI_AXIS_EN|MACHI_IRQ_EN|MACHI_ALLPACKETS_MASK|MACHI_DATA_DLY_MASK|MACHI_LOOPBACK_MASK|MACHI_COOKED_MASK);
-  axi_write(RSR_OFFSET, 0); /* clear pending receive packet, if any */
-  /* random inits */
-  for (i = 0; i < tstcnt*4; i += 4)
-    {
-    axi_write(TXBUFF_OFFSET+i, rand32());
-    axi_write(RXBUFF_OFFSET+i, i);
-    axi_write(AXISBUFF_OFFSET+i, i);
-    }
-  /* systematic inits */
-  axi_write(TXBUFF_OFFSET, 0xFFFFFFFF);
-  axi_write(TXBUFF_OFFSET+4, 0xFFFFFFFF);
-  axi_write(TXBUFF_OFFSET+8, 0xDEADBEEF);
-  axi_write(TXBUFF_OFFSET+12, 0x55555555);
-  /* launch the packet */
-  axi_write(TPLR_OFFSET,tstcnt*4);
-  /* wait for loopback to do its work */
-  do 
-    {
-      waiting = (axi_read(RSR_OFFSET) == 0);
-    }
-  while ((waitcnt++ < tstcnt*10) && waiting);
-  for (i = 0; i < tstcnt; i++)
-    {
-      uint32_t xmit_rslt = axi_read(TXBUFF_OFFSET+(i<<2));
-      uint32_t mac_rslt = axi_read(RXBUFF_OFFSET+(i<<2));
-      uint32_t axis_rslt = axi_read(AXISBUFF_OFFSET+(i<<2));
-      if ((xmit_rslt != mac_rslt) || (xmit_rslt != axis_rslt))
-        printf("Buffer offset %d: xmit=%x, mac=%x, axis=%x\n", i, xmit_rslt, mac_rslt, axis_rslt);
-      else
-	++match;
-    }
-  printf("Hello LowRISC! "__TIMESTAMP__" selftest matches=%d/%d, delay = %d\n", match, tstcnt, waitcnt);
+  loopback_test(8);
+  printf("Hello LowRISC! "__TIMESTAMP__"\n");
   rxbuf = (inqueue_t *)sbrk(sizeof(inqueue_t)*queuelen);
   txbuf = (outqueue_t *)sbrk(sizeof(outqueue_t)*queuelen);
   //  maskarray = (uint64_t *)sbrk(sizeof_maskarray);
@@ -362,7 +382,7 @@ int main() {
   memcpy (&macaddr_lo, mac_addr.addr+2, sizeof(uint32_t));
   memcpy (&macaddr_hi, mac_addr.addr+0, sizeof(uint16_t));
   axi_write(MACLO_OFFSET, htonl(macaddr_lo));
-  axi_write(MACHI_OFFSET, MACHI_IRQ_EN|MACHI_ALLPACKETS_MASK|MACHI_DATA_DLY_MASK|MACHI_COOKED_MASK|htons(macaddr_hi));
+  axi_write(MACHI_OFFSET, MACHI_IRQ_EN|htons(macaddr_hi));
   printf("MAC = %x:%x\n", axi_read(MACHI_OFFSET)&MACHI_MACADDR_MASK, axi_read(MACLO_OFFSET));
   
   printf("MAC address = %02x:%02x:%02x:%02x:%02x:%02x.\n",
@@ -415,42 +435,18 @@ int main() {
       {
 	int i, bad = 0;
         uint32_t *alloc = rxbuf[rxtail].alloc;
-        uint32_t *alloc2 = rxbuf[rxtail].alloc2;
         int rplr = rxbuf[rxtail].rplr;
-        int length, elength = ((rplr & RPLR_LENGTH_MASK) >> 16) - 4;
-	int xlength = rplr&0xFFFF;
+        int length, xlength = rplr & RPLR_LENGTH_MASK2;
         int rxheader = alloc[HEADER_OFFSET >> 2];
         int proto_type = ntohs(rxheader) & 0xFFFF;
 #ifdef VERBOSE
         printf("alloc = %x\n", alloc);
         printf("rxhead = %d, rxtail = %d\n", rxhead, rxtail);
-        printf("elength = %d (rplr = %x)\n", elength, rplr);
 #endif
 	if (rplr & 0xD0000000)
 	  {
 	    printf("?%x\n", rplr >> 28);
           }
-	bad = (elength != xlength+4) || memcmp(alloc, alloc2, xlength);
-        if (bad)
-	  {
-	    int i, first = -1;
-	    uint8_t *lft = (uint8_t *)alloc, *rght = (uint8_t *)alloc2;
-            if (elength != xlength+4)
-	      printf("elength = %d, xlength = %d\n", elength, xlength);
-	    for (i = 0; i < elength; i++)
-	      {
-	      if ((first < 0) && (lft[i] != rght[i]))
-		{
-	        first = i;
-		printf("Byte offset %d/%d: mac=%x, axis=%x\n", i, elength, lft[i], rght[i]);
-                }
-              }
-	    ++stats.bad;
-	  }
-	else
-	  ++stats.good;
-        if (rxbuf[rxtail].fcs != 0xc704dd7b)
-          printf("RX FCS = %x\n", rxbuf[rxtail].fcs);
         switch (proto_type)
           {
           case ETH_P_IP:
@@ -496,7 +492,7 @@ int main() {
                     {
                       uint16_t chksum;
                       int hlen = sizeof(struct icmphdr);
-                      int len = elength - sizeof(struct ethip_hdr) - 4;
+                      int len = xlength - sizeof(struct ethip_hdr);
                       memcpy(BUF->ethhdr.dest.addr, BUF->ethhdr.src.addr, 6);
                       memcpy(BUF->ethhdr.src.addr, uip_lladdr.addr, 6);
                 
@@ -511,7 +507,7 @@ int main() {
                       printf("sending ICMP reply (header = %d, total = %d, checksum = %x)\n", hlen, len, chksum);
                       PrintData((u_char *)icmp_hdr, len);
 #endif                      
-                      lite_queue(alloc, elength);
+                      lite_queue(alloc, xlength+4);
                     }
                   }
                   break;
