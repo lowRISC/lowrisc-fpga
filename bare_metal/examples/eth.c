@@ -42,12 +42,6 @@ typedef struct outqueue_t {
 
 outqueue_t *txbuf;
 
-typedef struct stats_t {
-  int good, bad;
-} stats_t;
-
-stats_t stats;
-
 #define VERBOSEXMIT
 #define UDP_DEBUG
 
@@ -202,7 +196,7 @@ static int copyin_pkt(void)
 {
   int i;
   int rplr = axi_read(RPLR_OFFSET);
-  int length = rplr & RPLR_LENGTH_MASK2;
+  int length = rplr & RPLR_LENGTH_MASK;
 #ifdef VERBOSE
       printf("length = %d (rplr = %x)\n", length, rplr);
 #endif      
@@ -214,7 +208,7 @@ static int copyin_pkt(void)
       alloc = sbrk(rnd);
       for (i = 0; i < rnd/4; i++)
         {
-          alloc[i] = axi_read(AXISBUFF_OFFSET+(i<<2));
+          alloc[i] = axi_read(RXBUFF_OFFSET+(i<<2));
         }
       rxbuf[rxhead].rplr = rplr;
       rxbuf[rxhead].alloc = alloc;
@@ -313,7 +307,7 @@ void loopback_test(int loops)
 #else
 	printf("Selftest iteration %d\n", j);
 #endif
-      /* AXIS enabled, bit-level digital loopback */
+      /* bit-level digital loopback */
       axi_write(RSR_OFFSET, 0); /* clear pending receive packet, if any */
       /* random inits */
 #ifdef SIM
@@ -322,7 +316,7 @@ void loopback_test(int loops)
 	{
 	axi_write(TXBUFF_OFFSET+i, rand32());
 	axi_write(RXBUFF_OFFSET+i, i);
-	axi_write(AXISBUFF_OFFSET+i, i);
+	//	axi_write(AXISBUFF_OFFSET+i, i);
 	}
 #endif
       /* systematic inits */
@@ -342,7 +336,7 @@ void loopback_test(int loops)
       for (i = 0; i < tstcnt; i++)
 	{
 	  uint32_t xmit_rslt = axi_read(TXBUFF_OFFSET+(i<<2));
-	  uint32_t axis_rslt = axi_read(AXISBUFF_OFFSET+(i<<2));
+	  uint32_t axis_rslt = axi_read(RXBUFF_OFFSET+(i<<2));
 	  if (xmit_rslt != axis_rslt)
 	    {
 #ifdef SIM
@@ -436,7 +430,7 @@ int main() {
 	int i, bad = 0;
         uint32_t *alloc = rxbuf[rxtail].alloc;
         int rplr = rxbuf[rxtail].rplr;
-        int length, xlength = rplr & RPLR_LENGTH_MASK2;
+        int length, xlength = rplr & RPLR_LENGTH_MASK;
         int rxheader = alloc[HEADER_OFFSET >> 2];
         int proto_type = ntohs(rxheader) & 0xFFFF;
 #ifdef VERBOSE
@@ -547,10 +541,14 @@ int main() {
                         process_udp_packet(udp_hdr->body, ulen-sizeof(struct udphdr));
                         break;
                       default:
+#ifdef VERBOSE                      
                         printf("IP Proto = UDP, source port = %d, dest port = %d, length = %d\n",
                            ntohs(udp_hdr->uh_sport),
                            dport,
                            ulen);
+#else
+			printf("?");
+#endif                      
                         break;
                       }
                   }
@@ -558,7 +556,13 @@ int main() {
                 case    IPPROTO_IDP: printf("IP Proto = IDP\n"); break;
                 case    IPPROTO_TP: printf("IP Proto = TP\n"); break;
                 case    IPPROTO_DCCP: printf("IP Proto = DCCP\n"); break;
-                case    IPPROTO_IPV6: printf("IP Proto = IPV6\n"); break;
+                case    IPPROTO_IPV6:
+#ifdef VERBOSE                      
+		  printf("IP Proto = IPV6\n");
+#else
+		  printf("6");
+#endif                      
+		  break;
                 case    IPPROTO_RSVP: printf("IP Proto = RSVP\n"); break;
                 case    IPPROTO_GRE: printf("IP Proto = GRE\n"); break;
                 case    IPPROTO_ESP: printf("IP Proto = ESP\n"); break;
@@ -617,7 +621,11 @@ int main() {
             }
             break;
           case ETH_P_IPV6:
+#ifdef VERBOSE                      
             printf("proto_type = IPV6\n");
+#else
+	    printf("6");
+#endif                      
             break;
           default:
             printf("proto_type = 0x%x\n", proto_type);
@@ -724,7 +732,6 @@ void process_udp_packet(const u_char *data, int ulen)
             if (idx % 100 == 0)
 	      {
 		printf(".");
-		raw_udp_main(&stats, sizeof(stats_t));
 	      }
 #endif
             oldidx = idx;

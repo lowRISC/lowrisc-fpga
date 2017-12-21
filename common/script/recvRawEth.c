@@ -32,12 +32,6 @@
 #include <sys/types.h>
 #include <openssl/md5.h>
 
-typedef struct stats_t {
-  uint32_t good, bad;
-} stats_t;
-
-stats_t stats;
-
 int select_wait(int sockfd)
 {
   fd_set rfds;
@@ -135,10 +129,6 @@ int recv_message(int sockfd, int typ)
               memcpy(digest, payload, len);
               update = (len==typ);
               break;
-	    case sizeof(stats_t):
-	      memcpy(&stats, payload, len);
-	      printf("good = %d, bad = %d\n", stats.good, stats.bad);
-	      break;
             default:
               printf("Don't know what to do with message of length %d\n", len);
               break;

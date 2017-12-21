@@ -8,7 +8,6 @@
 
 /* Register offsets for the EmacLite Core */
 #define TXBUFF_OFFSET       0x1000          /* Transmit Buffer */
-#define AXISBUFF_OFFSET     0x1800          /* Transmit Buffer */
 
 #define MACLO_OFFSET        0x0800          /* MAC address low 32-bits */
 #define MACHI_OFFSET        0x0804          /* MAC address high 16-bits and MAC ctrl */
@@ -19,7 +18,7 @@
 #define RSR_OFFSET          0x0818          /* Rx status and reset register */
 #define RPLR_OFFSET         0x081C          /* Rx packet length register */
 
-#define RXBUFF_OFFSET       0x0004          /* Receive Buffer */
+#define RXBUFF_OFFSET       0x0000          /* Receive Buffer */
 #define MDIORD_RDDATA_MASK    0x0000FFFF    /* Data to be Read */
 
 /* MAC Ctrl Register (MACHI) Bit Masks */
@@ -32,6 +31,7 @@
 #define MDIOCTRL_MDIOCLK_MASK 0x00000001    /* MDIO Clock Mask */
 #define MDIOCTRL_MDIOOUT_MASK 0x00000002    /* MDIO Output Mask */
 #define MDIOCTRL_MDIOOEN_MASK 0x00000004    /* MDIO Output Enable Mask */
+#define MDIOCTRL_MDIORST_MASK 0x00000008    /* MDIO Input Mask */
 #define MDIOCTRL_MDIOIN_MASK  0x00000008    /* MDIO Input Mask */
 
 /* Transmit Status Register (TPLR) Bit Masks */
@@ -44,16 +44,13 @@
 #define RSR_RECV_IRQ_MASK     0x00000002      /* Rx irq bit */
 
 /* Receive Packet Length Register (RPLR) */
-#define RPLR_LENGTH_MASK      0x0FFF0000      /* Rx packet length */
-#define RPLR_LENGTH_MASK2     0x00000FFF      /* Rx AXIS packet length */
-#define RPLR_ERROR_MASK       0x10000000      /* Rx error mask */
-#define RPLR_FCS_ERROR_MASK   0x20000000      /* Rx FCS error mask */
-#define AXIS_ERROR_MASK       0x40000000      /* Rx error mask */
-#define AXIS_FCS_ERROR_MASK   0x80000000      /* Rx FCS error mask */
+#define RPLR_LENGTH_MASK      0x00000FFF      /* Rx packet length */
+#define RPLR_ERROR_MASK       0x40000000      /* Rx error mask */
+#define RPLR_FCS_ERROR_MASK   0x80000000      /* Rx FCS error mask */
 
 /* General Ethernet Definitions */
-#define HEADER_OFFSET       12              /* Offset to length field */
-#define HEADER_SHIFT        16              /* Shift value for length */
+#define HEADER_OFFSET               12      /* Offset to length field */
+#define HEADER_SHIFT                16      /* Shift value for length */
 #define ARP_PACKET_SIZE             28      /* Max ARP packet size */
 #define HEADER_IP_LENGTH_OFFSET     16      /* IP Length Offset */
 
