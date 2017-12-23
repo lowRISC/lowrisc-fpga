@@ -665,7 +665,7 @@ void boot(uint8_t *boot_file_buf, uint32_t fsize)
   axi_write(MACHI_OFFSET, axi_read(MACHI_OFFSET)&~MACHI_IRQ_EN);
   axi_write(BUF_OFFSET, 0);
   printf("Ethernet interrupt status = %d\n", axi_read(BUF_OFFSET));
-  printf("Load %d bytes to memory address %x from boot.bin of %d bytes.\n", fsize, boot_file_buf, fsize);
+  printf("Loaded %d bytes to memory address %x from boot.bin\n", fsize, boot_file_buf);
 
   // read elf
   printf("load elf to DDR memory\n");
@@ -747,10 +747,7 @@ void process_udp_packet(const u_char *data, int ulen)
 #ifdef VERBOSE
             printf("Data Payload index %d\n", idx);
 #else
-            if (idx % 100 == 0)
-	      {
-		printf(".");
-	      }
+            if (idx % 100 == 0) printf(".");
 #endif
             oldidx = idx;
           }
