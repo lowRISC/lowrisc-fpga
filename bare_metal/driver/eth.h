@@ -12,13 +12,13 @@
 #define MACLO_OFFSET        0x0800          /* MAC address low 32-bits */
 #define MACHI_OFFSET        0x0804          /* MAC address high 16-bits and MAC ctrl */
 #define TPLR_OFFSET         0x0808          /* Tx packet length */
-#define TFCS_OFFSET         0x080C          /* Tx frame check sequence register */
+#define FRMERR_OFFSET       0x080C          /* Tx frame error register */
 #define MDIOCTRL_OFFSET     0x0810          /* MDIO Control Register */
-#define RFCS_OFFSET         0x0814          /* Rx frame check sequence register */
-#define RSR_OFFSET          0x0818          /* Rx status and reset register */
-#define RPLR_OFFSET         0x081C          /* Rx packet length register */
+#define FCSERR_OFFSET       0x0814          /* Rx reset and FCS error register */
+#define BUF_OFFSET          0x0818          /* Rx index register */
+#define RPLR_OFFSET         0x0820          /* Rx packet length registers */
 
-#define RXBUFF_OFFSET       0x0000          /* Receive Buffer */
+#define RXBUFF_OFFSET       0x4000          /* Receive Buffer */
 #define MDIORD_RDDATA_MASK    0x0000FFFF    /* Data to be Read */
 
 /* MAC Ctrl Register (MACHI) Bit Masks */
@@ -39,14 +39,12 @@
 #define TPLR_PACKET_LEN_MASK  0x00000FFF     /* Tx packet length */
 #define TPLR_BUSY_MASK        0x80000000     /* Tx busy mask */
 
-/* Receive Status Register (RSR) */
-#define RSR_RECV_DONE_MASK    0x00000001      /* Rx complete */
-#define RSR_RECV_IRQ_MASK     0x00000002      /* Rx irq bit */
-
-/* Receive Packet Length Register (RPLR) */
-#define RPLR_LENGTH_MASK      0x00000FFF      /* Rx packet length */
-#define RPLR_ERROR_MASK       0x40000000      /* Rx error mask */
-#define RPLR_FCS_ERROR_MASK   0x80000000      /* Rx FCS error mask */
+/* Receive Index Register (BUF) */
+#define BUF_FIRST_MASK        0x0000000F      /* Rx buffer first mask */
+#define BUF_NEXT_MASK         0x000000F0      /* Rx buffer next mask */
+#define BUF_LAST_MASK         0x00000F00      /* Rx buffer last mask */
+#define BUF_IRQ_MASK          0x00001000      /* Rx irq bit */
+#define BUF_NEXT_SHIFT        0x00000004      /* Rx buffer next shift */
 
 /* General Ethernet Definitions */
 #define HEADER_OFFSET               12      /* Offset to length field */

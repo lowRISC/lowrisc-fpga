@@ -653,7 +653,7 @@ int main()
   printf("Licensed under the GNU General Public License version 2 (only).\n");
   printf("\n");
   testrange((void volatile *)(DEV_MAP__io_ext_eth__BASE+0x1000), 0x800, 1, 0);
-  testrange((void volatile *)(DEV_MAP__io_ext_eth__BASE+0x1800), 0x800, 1, 0);
+  testrange((void volatile *)(DEV_MAP__io_ext_eth__BASE+0x4000), 0x4000, 1, 0);
 }
 
 void external_interrupt(void)
