@@ -165,8 +165,13 @@ trap_entry:
   csrr a0, mcause
   csrr a1, mepc
   mv a2, sp
+  bgez a0, 1f
+  jal handle_interrupt
+  j 2f      
+1:
   jal handle_trap
   csrw mepc, a0
+2:
 
   # Remain in M-mode after eret
   li t0, MSTATUS_MPP

@@ -1,5 +1,5 @@
 // An ethernet loader program
-// #define VERBOSE
+//#define VERBOSE
 #include "encoding.h"
 #include "bits.h"
 #include "elf.h"
@@ -256,13 +256,15 @@ static int oldidx;
 static uint16_t peer_port;
 static u_char peer_addr[6];
 static uint64_t maskarray[sizeof_maskarray/sizeof(uint64_t)];
+volatile uint32_t *plic;
 
 void external_interrupt(void)
 {
-  int handled = 0;
+  int i, claim, handled = 0;
 #ifdef VERBOSE
   printf("Hello external interrupt! "__TIMESTAMP__"\n");
 #endif  
+  claim = plic[0x80001];
   /* Check if there is Rx Data available */
   if (axi_read(RSR_OFFSET, 0) & RSR_RECV_DONE_MASK)
     {
@@ -282,6 +284,7 @@ void external_interrupt(void)
     {
       printf("unhandled interrupt!\n");
     }
+  plic[0x80001] = claim;
 }
     // Function for checksum calculation. From the RFC,
     // the checksum algorithm is:
@@ -306,7 +309,6 @@ static unsigned short csum(uint8_t *buf, int nbytes)
 
 extern size_t eth, intc;
 static uintptr_t old_mstatus, old_mie;
-volatile uint32_t *plic;
 
 void init_plic(void)
 {

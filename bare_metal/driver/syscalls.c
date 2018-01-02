@@ -66,43 +66,89 @@ void tohost_exit(long code)
     ;
 }
 
+void external_interrupt(void);
+
+// #define VERBOSE_INTERRUPT
+
+void handle_interrupt(long cause)
+{
+  int mip;
+  char code[20];
+  cause &= 0x7FFFFFFF;
+#ifdef VERBOSE_INTERRUPT
+  switch(cause)
+    {
+    case IRQ_S_SOFT   : strcpy(code, "IRQ_S_SOFT   "); break;
+    case IRQ_H_SOFT   : strcpy(code, "IRQ_H_SOFT   "); break;
+    case IRQ_M_SOFT   : strcpy(code, "IRQ_M_SOFT   "); break;
+    case IRQ_S_TIMER  : strcpy(code, "IRQ_S_TIMER  "); break;
+    case IRQ_H_TIMER  : strcpy(code, "IRQ_H_TIMER  "); break;
+    case IRQ_M_TIMER  : strcpy(code, "IRQ_M_TIMER  "); break;
+    case IRQ_S_DEV    : strcpy(code, "IRQ_S_DEV    "); break;
+    case IRQ_H_DEV    : strcpy(code, "IRQ_H_DEV    "); break;
+    case IRQ_M_DEV    : strcpy(code, "IRQ_M_DEV    "); break;
+    case IRQ_COP      : strcpy(code, "IRQ_COP      "); break;
+    case IRQ_HOST     : strcpy(code, "IRQ_HOST     "); break;
+    default           : snprintf(code, sizeof(code), "IRQ_%x     ", cause);
+    }
+ uart_send_string(code);
+ mip = read_csr(mip);
+ snprintf(code, sizeof(code), "mip=%x\n", mip);
+ uart_send_string(code);
+#endif
+ if (cause==IRQ_M_DEV)
+   external_interrupt();  
+}
+
 long handle_trap(long cause, long epc, long regs[32])
 {
   int* csr_insn;
     // do some report
+    
+  printf("mepc=%x\n", epc);
   switch(cause)
     {
     case 0:
-      printf("mcause=misalign\n", cause);
+      printf("mcause=misalign\n");
       break;
     case 1:
-      printf("mcause=instr access fault\n", cause);
+      printf("mcause=instr access fault\n");
       break;
     case 2:
-      printf("mcause=instr illegal\n", cause);
+      printf("mcause=instr illegal\n");
       break;
     case 3:
-      printf("mcause=breakpoint\n", cause);
+      printf("mcause=breakpoint\n");
       break;
     case 4:
-      printf("mcause=load address misaligned\n", cause);
+      printf("mcause=load address misaligned\n");
       break;
     case 5:
-      printf("mcause=load access fault\n", cause);
+      printf("mcause=load access fault\n");
       break;
     case 6:
-      printf("mcause=store address misaligned\n", cause);
+      printf("mcause=store address misaligned\n");
       break;
     case 7:
-      printf("mcause=store access fault\n", cause);
+      printf("mcause=store access fault\n");
+      break;
+    case 8:
+      printf("mcause=Environment call from U-mode\n");
+      break;
+    case 9:
+      printf("mcause=Environment call from S-mode\n");
+      break;
+    case 10:
+      printf("mcause=Environment call from H-mode\n");
+      break;
+    case 11:
+      printf("mcause=Environment call from M-mode\n");
       break;
     default:
-      printf("mcause=%x\n", cause);
+      printf("mcause=%d (0x%x)\n", cause, cause);
       break;
     }
   
-    
-    printf("mepc=%x\n", epc);
     printf("mbadaddr=%x\n", read_csr_safe(mbadaddr));
     //    printf("einsn=%x\n", *(int*)epc);
     for (int i = 0; i < 32; i++)
