@@ -159,6 +159,8 @@ int main(int argc, char *argv[])
   char sender[INET6_ADDRSTRLEN];
   int sockfd, i, ret = 0;
   int sockopt, restart = 0;
+  int md5digest = 0;
+  int go = 1;
   int oldpercent = -1;
   struct ifreq ifopts;	/* set promiscuous mode */
   struct ifreq if_ip;	/* get ip addr */
@@ -174,6 +176,13 @@ int main(int argc, char *argv[])
   if (!strcmp(argv[1], "-r"))
     {
       restart = 1;
+      ++argv;
+      --argc;
+    }
+
+  if (!strcmp(argv[1], "-d"))
+    {
+      md5digest = 1;
       ++argv;
       --argc;
     }
@@ -277,19 +286,23 @@ int main(int argc, char *argv[])
       printf(" %d%%\n", 100*(chunks-incomplete)/chunks);
       fflush(stdout);
     }
-  do {
-    send_message(s, 0xFFFC);
-    usleep(1000000);
-  }
-  while (!recv_message(sockfd, MD5_DIGEST_LENGTH*2+1));
-  printf("Received digest = %s", digest);
-  if (!strcmp(digest, hex))
+  if (md5digest)
     {
-    printf(" (OK)\n");
-    send_message(s, 0xFFFF);
+      do {
+        send_message(s, 0xFFFC);
+        usleep(1000000);
+      }
+      while (!recv_message(sockfd, MD5_DIGEST_LENGTH*2+1));
+      printf("Received digest = %s", digest);
+      if (!strcmp(digest, hex))
+        {
+          printf(" (OK)\n");
+          if (go) send_message(s, 0xFFFF);
+        }
+      else
+        printf(" (BAD)\n");
     }
-  else
-    printf(" (BAD)\n");
+  else if (go) send_message(s, 0xFFFF);
   close(s);
   close(sockfd);
   return ret;
