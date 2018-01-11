@@ -102,7 +102,8 @@ int rxhead, rxtail, txhead, txtail;
 
 typedef struct inqueue_t {
   void *alloc;
-  int len;
+  int rplr;
+  int fcs;
 } inqueue_t;
 
 inqueue_t *rxbuf;
@@ -114,7 +115,7 @@ typedef struct outqueue_t {
 
 outqueue_t *txbuf;
 
-//#define VERBOSE
+#define VERBOSEXMIT
 #define UDP_DEBUG
 
 // LowRISC Ethernet base address
@@ -122,7 +123,7 @@ static volatile unsigned int * const eth_base = (volatile unsigned int*)((uint32
 
 static void axi_write(size_t addr, int data)
 {
-  if (addr < 0x8000)
+  if (addr < 0x2000)
     eth_base[addr >> 2] = data;
   else
     printf("axi_write(%x,%x) out of range\n", addr, data);
@@ -130,7 +131,7 @@ static void axi_write(size_t addr, int data)
 
 static int axi_read(size_t addr)
 {
-  if (addr < 0x8000)
+  if (addr < 0x2000)
     return eth_base[addr >> 2];
   else
     printf("axi_read(%x) out of range\n", addr);
@@ -261,39 +262,36 @@ uint32_t __bswap_32(uint32_t x)
 
 #define min(x,y) (x) < (y) ? (x) : (y)
 
+int eth_discard = 0;
 void process_my_packet(int size, const u_char *buffer);
 void *sbrk(size_t len);
 
-static void copyin_pkts(void)
+static int copyin_pkt(void)
 {
   int i;
-  int bufreg = axi_read(BUF_OFFSET);
-  int buf = bufreg & BUF_FIRST_MASK;
-  int nxt = (bufreg & BUF_NEXT_MASK) >> BUF_NEXT_SHIFT;
-  while (nxt != buf)
-    {
-      int length = axi_read(RPLR_OFFSET + ((buf&7)<<2));
-      int rxbuff = RXBUFF_OFFSET+((buf&7)<<11);
+  int fcs = axi_read(RFCS_OFFSET);
+  int rplr = axi_read(RPLR_OFFSET);
+  int length = rplr & RPLR_LENGTH_MASK;
 #ifdef VERBOSE
-      printf("length(%d,%d) = %d\n", buf, nxt, length);
+      printf("length = %d (rplr = %x)\n", length, rplr);
 #endif      
-      if (length >= 14)
-	{
-	  int rnd;
-	  uint32_t *alloc;
-	  rnd = ((length-1|3)+1); /* round to a multiple of 4 */
-	  alloc = sbrk(rnd);
-	  for (i = 0; i < rnd/4; i++)
-	    {
-	      alloc[i] = axi_read(rxbuff+(i<<2));
-	    }
-	  rxbuf[rxhead].len = length;
-	  rxbuf[rxhead].alloc = alloc;
-	  rxhead = (rxhead + 1) % queuelen;
-	}
-      buf = (buf+1)&0xF;
-      axi_write(BUF_OFFSET, (((buf+8)&0xF)<<8) | buf); /* acknowledge */
+      if ((length >= 14) && !eth_discard)
+    {
+      int rnd;
+      uint32_t *alloc;
+      rnd = ((length-1|3)+1); /* round to a multiple of 4 */
+      alloc = sbrk(rnd);
+      for (i = 0; i < rnd/4; i++)
+        {
+          alloc[i] = axi_read(RXBUFF_OFFSET+(i<<2));
+        }
+      rxbuf[rxhead].fcs = fcs;
+      rxbuf[rxhead].rplr = rplr;
+      rxbuf[rxhead].alloc = alloc;
+      rxhead = (rxhead + 1) % queuelen;
     }
+  axi_write(RSR_OFFSET, 0); /* acknowledge */
+  return length;
 }
 
 static void lite_queue(void *buf, int length)
@@ -322,17 +320,17 @@ static uint64_t maskarray[sizeof_maskarray/sizeof(uint64_t)];
 
 void external_interrupt(void)
 {
-  int rsr, handled = 0;
+  int handled = 0;
 #ifdef VERBOSE
   printf("Hello external interrupt! "__TIMESTAMP__"\n");
 #endif
   /* Check if there is Rx Data available */
-  if (axi_read(BUF_OFFSET) & BUF_IRQ_MASK)
+  if (axi_read(RSR_OFFSET) & RSR_RECV_DONE_MASK)
     {
 #ifdef VERBOSE
       printf("Ethernet interrupt\n");
 #endif  
-      copyin_pkts();
+      int length = copyin_pkt();
       handled = 1;
     }
   if (uart_check_read_irq())
@@ -371,45 +369,26 @@ static uintptr_t old_mstatus, old_mie;
 
 #define rand32() ((unsigned int) rand() | ( (unsigned int) rand() << 16))
   
-void loopback_test(void)
+void loopback_test(int loops, int sim)
   {
-    enum {loops=8, maxcnt=375};
-    uint32_t status;
-    int i, j, waiting, actualwait, match, waitcnt = 0;
-    axi_write(FCSERR_OFFSET, 0);
-    /* bit-level digital loopback */
+    int j;
     axi_write(MACHI_OFFSET, MACHI_LOOPBACK_MASK);
-    axi_write(BUF_OFFSET, loops << 8); /* clear pending receive packet, if any */
-    /* wait for loopback to do its work */
-    do 
-      {
-	status = axi_read(BUF_OFFSET);
-	waiting = (((status & BUF_NEXT_MASK) >> BUF_NEXT_SHIFT) == 0);
-	if (waiting) actualwait = waitcnt;
-      }
-    while ((++waitcnt < maxcnt) && waiting);
-    axi_write(FCSERR_OFFSET, 0);
-    axi_write(BUF_OFFSET, loops << 8); /* clear pending receive packet, if any */
-    printf("Status = %x, Initial wait = %d (busy=%d)\n", status, waitcnt, actualwait);
     for (j = 1; j <= loops; j++)
       {
+	enum {maxcnt=375};
+	int i, waiting, actualwait, match = 0, waitcnt = 0;
 	int tstcnt = 2 << j;
-	match = 0;
-	waitcnt = 0;
 	if (tstcnt > maxcnt) tstcnt = maxcnt; /* max length packet */
-#ifdef SIM
-#else
-	printf("Selftest iteration %d\n", j);
-#endif
+	if (!sim) printf("Selftest iteration %d\n", j);
+      /* bit-level digital loopback */
+      axi_write(RSR_OFFSET, 0); /* clear pending receive packet, if any */
       /* random inits */
-#ifdef SIM
-#else
-      for (i = 0; i < tstcnt*4; i += 4)
+      if (!sim) for (i = 0; i < tstcnt*4; i += 4)
 	{
 	axi_write(TXBUFF_OFFSET+i, rand32());
-	axi_write(RXBUFF_OFFSET+(j-1)*2048+i, i);
+	axi_write(RXBUFF_OFFSET+i, i);
+	//	axi_write(AXISBUFF_OFFSET+i, i);
 	}
-#endif
       /* systematic inits */
       axi_write(TXBUFF_OFFSET, 0xFFFFFFFF);
       axi_write(TXBUFF_OFFSET+4, 0xFFFFFFFF);
@@ -420,57 +399,37 @@ void loopback_test(void)
       /* wait for loopback to do its work */
       do 
 	{
-	  status = axi_read(BUF_OFFSET);
-	  waiting = (((status & BUF_NEXT_MASK) >> BUF_NEXT_SHIFT) <= j-1);
+	  waiting = (axi_read(RSR_OFFSET) == 0);
 	  if (waiting) actualwait = waitcnt;
 	}
       while ((waitcnt++ < tstcnt) || waiting);
-      printf("Status = %x\n", status);
       for (i = 0; i < tstcnt; i++)
 	{
 	  uint32_t xmit_rslt = axi_read(TXBUFF_OFFSET+(i<<2));
-	  uint32_t axis_rslt = axi_read(RXBUFF_OFFSET+(j-1)*2048+(i<<2));
+	  uint32_t axis_rslt = axi_read(RXBUFF_OFFSET+(i<<2));
 	  if (xmit_rslt != axis_rslt)
 	    {
-#ifdef SIM
-	      axi_write(MACHI_OFFSET, MACHI_LOOPBACK_MASK|MACHI_COOKED_MASK);
-#else
-	      printf("Buffer offset %d: xmit=%x, axis=%x\n", i, xmit_rslt, axis_rslt);
-#endif
+	      if (sim)
+		axi_write(MACHI_OFFSET, MACHI_LOOPBACK_MASK|MACHI_COOKED_MASK);
+	      else
+	        printf("Buffer offset %d: xmit=%x, axis=%x\n", i, xmit_rslt, axis_rslt);
 	    }
 	  else
 	    ++match;
 	}
-#ifdef SIM
-#else
-      printf("Selftest matches=%d/%d, delay = %d\n", match, tstcnt, actualwait);
-#endif
+      if (!sim)
+	printf("Selftest matches=%d/%d, delay = %d\n", match, tstcnt, actualwait);
       }
   }
 
-int eth_main() {
+int eth_main(void) {
   uip_ipaddr_t addr;
-  uint32_t macaddr_lo, macaddr_hi;
-  uart_init();
-  printf("Hello LowRISC! "__TIMESTAMP__"\n");
   rxbuf = (inqueue_t *)sbrk(sizeof(inqueue_t)*queuelen);
   txbuf = (outqueue_t *)sbrk(sizeof(outqueue_t)*queuelen);
   //  maskarray = (uint64_t *)sbrk(sizeof_maskarray);
   memset(maskarray, 0, sizeof_maskarray);
   
-  mac_addr.addr[0] = (uint8_t)0xEE;
-  mac_addr.addr[1] = (uint8_t)0xE1;
-  mac_addr.addr[2] = (uint8_t)0xE2;
-  mac_addr.addr[3] = (uint8_t)0xE3;
-  mac_addr.addr[4] = (uint8_t)0xE4;
-  mac_addr.addr[5] = (uint8_t)0xE5;
-
-  memcpy (&macaddr_lo, mac_addr.addr+2, sizeof(uint32_t));
-  memcpy (&macaddr_hi, mac_addr.addr+0, sizeof(uint16_t));
-  axi_write(MACLO_OFFSET, htonl(macaddr_lo));
-  axi_write(MACHI_OFFSET, MACHI_IRQ_EN|htons(macaddr_hi));
-  axi_write(FCSERR_OFFSET, 0);
-  axi_write(BUF_OFFSET, 0x800);
+#ifdef VERBOSE  
   printf("MAC = %x:%x\n", axi_read(MACHI_OFFSET)&MACHI_MACADDR_MASK, axi_read(MACLO_OFFSET));
   
   printf("MAC address = %02x:%02x:%02x:%02x:%02x:%02x.\n",
@@ -481,7 +440,7 @@ int eth_main() {
          mac_addr.addr[4],
          mac_addr.addr[5]
          );
-
+#endif
   uip_setethaddr(mac_addr);
   
   uip_ipaddr(&addr, 192,168,0,51);
@@ -521,15 +480,17 @@ int eth_main() {
       }
     if (rxhead != rxtail)
       {
-	int i, bad = 0;
         uint32_t *alloc = rxbuf[rxtail].alloc;
-        int length, xlength = rxbuf[rxtail].len;
+        int rplr = rxbuf[rxtail].rplr;
+        int length, xlength = rplr & RPLR_LENGTH_MASK;
         int rxheader = alloc[HEADER_OFFSET >> 2];
         int proto_type = ntohs(rxheader) & 0xFFFF;
 #ifdef VERBOSE
         printf("alloc = %x\n", alloc);
         printf("rxhead = %d, rxtail = %d\n", rxhead, rxtail);
 #endif
+        if (rxbuf[rxtail].fcs != 0xc704dd7b)
+          printf("RX FCS = %x\n", rxbuf[rxtail].fcs);
         switch (proto_type)
           {
           case ETH_P_IP:
@@ -740,17 +701,18 @@ void boot(uint8_t *boot_file_buf, uint32_t fsize)
 {
   uint32_t br;
   int status;
+  printf("Disabling Ethernet\n");
+  axi_write(MACHI_OFFSET, (axi_read(MACHI_OFFSET)&MACHI_MACADDR_MASK) | MACHI_LOOPBACK_MASK);
+  eth_discard = 1;
   if (!digest)
     digest = hash_buf(boot_file_buf, fsize);
   printf("Digest of %d bytes = %s\n", fsize, digest);
-  printf("Disabling interrupts\n");
-  write_csr(mie, old_mie);
+  printf("Disabling interrupts, Ethernet interrupt = %d\n", axi_read(RSR_OFFSET));
+  write_csr(mie, 0);
   write_csr(mstatus, old_mstatus);
   uart_disable_read_irq();
-  axi_write(MACHI_OFFSET, axi_read(MACHI_OFFSET)&~MACHI_IRQ_EN);
-  axi_write(BUF_OFFSET, 0);
-  printf("Ethernet interrupt status = %d\n", axi_read(BUF_OFFSET));
-  printf("Loaded %d bytes to memory address %x from boot.bin\n", fsize, boot_file_buf);
+
+  printf("Loaded %d bytes to memory address %x from boot.bin\n", fsize, boot_file_buf, fsize);
 
   // read elf
   printf("load elf to DDR memory\n");
@@ -1005,12 +967,24 @@ int raw_udp_main(void *msg, int payload_size)
 
 int main()
 {
+  uint32_t macaddr_lo, macaddr_hi;
   int sw = sd_resp(31);
   uart_init();
+  loopback_test(8, (sw & 0xF) == 0xF);
   board_mmc_power_init();  
-  loopback_test();
 
   uart_send_string("lowRISC boot program\n=====================================\n");
+  mac_addr.addr[0] = (uint8_t)0xEE;
+  mac_addr.addr[1] = (uint8_t)0xE1;
+  mac_addr.addr[2] = (uint8_t)0xE2;
+  mac_addr.addr[3] = (uint8_t)0xE3;
+  mac_addr.addr[4] = (uint8_t)0xE4;
+  mac_addr.addr[5] = (uint8_t)(0xE0|(sw >> 12));
+
+  memcpy (&macaddr_lo, mac_addr.addr+2, sizeof(uint32_t));
+  memcpy (&macaddr_hi, mac_addr.addr+0, sizeof(uint16_t));
+  axi_write(MACLO_OFFSET, htonl(macaddr_lo));
+  axi_write(MACHI_OFFSET, MACHI_IRQ_EN|htons(macaddr_hi));
   if (sw & 1)
       {
         uart_send_string(HELLO"Jumping to DRAM because SW0 is high ..\r\n");
