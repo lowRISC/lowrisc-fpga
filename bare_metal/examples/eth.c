@@ -437,10 +437,8 @@ int main() {
         printf("alloc = %x\n", alloc);
         printf("rxhead = %d, rxtail = %d\n", rxhead, rxtail);
 #endif
-	if (rplr & 0xD0000000)
-	  {
-	    printf("?%x\n", rplr >> 28);
-          }
+        if (rxbuf[rxtail].fcs != 0xc704dd7b)
+          printf("RX FCS = %x\n", rxbuf[rxtail].fcs);
         switch (proto_type)
           {
           case ETH_P_IP:

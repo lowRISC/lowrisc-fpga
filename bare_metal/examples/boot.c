@@ -270,7 +270,7 @@ static int copyin_pkt(void)
   int i;
   int fcs = axi_read(RFCS_OFFSET);
   int rplr = axi_read(RPLR_OFFSET);
-  int length = (rplr & RPLR_LENGTH_MASK) >> 16;
+  int length = rplr & RPLR_LENGTH_MASK;
 #ifdef VERBOSE
       printf("length = %d (rplr = %x)\n", length, rplr);
 #endif      
@@ -377,27 +377,69 @@ static unsigned short csum(uint8_t *buf, int nbytes)
 
 static uintptr_t old_mstatus, old_mie;
 
-int eth_main() {
+#define rand32() ((unsigned int) rand() | ( (unsigned int) rand() << 16))
+  
+void loopback_test(int loops, int sim)
+  {
+    int j;
+    axi_write(MACHI_OFFSET, MACHI_LOOPBACK_MASK);
+    for (j = 1; j <= loops; j++)
+      {
+	enum {maxcnt=375};
+	int i, waiting, actualwait, match = 0, waitcnt = 0;
+	int tstcnt = 2 << j;
+	if (tstcnt > maxcnt) tstcnt = maxcnt; /* max length packet */
+	if (!sim) printf("Selftest iteration %d\n", j);
+      /* bit-level digital loopback */
+      axi_write(RSR_OFFSET, 0); /* clear pending receive packet, if any */
+      /* random inits */
+      if (!sim) for (i = 0; i < tstcnt*4; i += 4)
+	{
+	axi_write(TXBUFF_OFFSET+i, rand32());
+	axi_write(RXBUFF_OFFSET+i, i);
+	//	axi_write(AXISBUFF_OFFSET+i, i);
+	}
+      /* systematic inits */
+      axi_write(TXBUFF_OFFSET, 0xFFFFFFFF);
+      axi_write(TXBUFF_OFFSET+4, 0xFFFFFFFF);
+      axi_write(TXBUFF_OFFSET+8, 0xDEADBEEF);
+      axi_write(TXBUFF_OFFSET+12, 0x55555555);
+      /* launch the packet */
+      axi_write(TPLR_OFFSET,tstcnt*4);
+      /* wait for loopback to do its work */
+      do 
+	{
+	  waiting = (axi_read(RSR_OFFSET) == 0);
+	  if (waiting) actualwait = waitcnt;
+	}
+      while ((waitcnt++ < tstcnt) || waiting);
+      for (i = 0; i < tstcnt; i++)
+	{
+	  uint32_t xmit_rslt = axi_read(TXBUFF_OFFSET+(i<<2));
+	  uint32_t axis_rslt = axi_read(RXBUFF_OFFSET+(i<<2));
+	  if (xmit_rslt != axis_rslt)
+	    {
+	      if (sim)
+                axi_write(MACHI_OFFSET, MACHI_LOOPBACK_MASK|MACHI_COOKED_MASK);
+	      else
+                printf("Buffer offset %d: xmit=%x, axis=%x\n", i, xmit_rslt, axis_rslt);
+	    }
+	  else
+	    ++match;
+	}
+      if (!sim)
+        printf("Selftest matches=%d/%d, delay = %d\n", match, tstcnt, actualwait);
+      }
+  }
+
+int eth_main(void) {
   uip_ipaddr_t addr;
-  uint32_t macaddr_lo, macaddr_hi;
-  uart_init();
-  printf("Hello LowRISC! "__TIMESTAMP__"\n");
   rxbuf = (inqueue_t *)sbrk(sizeof(inqueue_t)*queuelen);
   txbuf = (outqueue_t *)sbrk(sizeof(outqueue_t)*queuelen);
   //  maskarray = (uint64_t *)sbrk(sizeof_maskarray);
   memset(maskarray, 0, sizeof_maskarray);
   
-  mac_addr.addr[0] = (uint8_t)0xEE;
-  mac_addr.addr[1] = (uint8_t)0xE1;
-  mac_addr.addr[2] = (uint8_t)0xE2;
-  mac_addr.addr[3] = (uint8_t)0xE3;
-  mac_addr.addr[4] = (uint8_t)0xE4;
-  mac_addr.addr[5] = (uint8_t)0xE5;
-
-  memcpy (&macaddr_lo, mac_addr.addr+2, sizeof(uint32_t));
-  memcpy (&macaddr_hi, mac_addr.addr+0, sizeof(uint16_t));
-  axi_write(MACLO_OFFSET, htonl(macaddr_lo));
-  axi_write(MACHI_OFFSET, MACHI_IRQ_EN|MACHI_ALLPACKETS_MASK|MACHI_DATA_DLY_MASK|MACHI_COOKED_MASK|htons(macaddr_hi));
+#ifdef VERBOSE  
   printf("MAC = %x:%x\n", axi_read(MACHI_OFFSET)&MACHI_MACADDR_MASK, axi_read(MACLO_OFFSET));
   
   printf("MAC address = %02x:%02x:%02x:%02x:%02x:%02x.\n",
@@ -408,7 +450,7 @@ int eth_main() {
          mac_addr.addr[4],
          mac_addr.addr[5]
          );
-
+#endif
   uip_setethaddr(mac_addr);
   
   uip_ipaddr(&addr, 192,168,0,51);
@@ -450,13 +492,12 @@ int eth_main() {
       {
         uint32_t *alloc = rxbuf[rxtail].alloc;
         int rplr = rxbuf[rxtail].rplr;
-        int length, elength = ((rplr & RPLR_LENGTH_MASK) >> 16) - 4;
+        int length, xlength = rplr & RPLR_LENGTH_MASK;
         int rxheader = alloc[HEADER_OFFSET >> 2];
         int proto_type = ntohs(rxheader) & 0xFFFF;
 #ifdef VERBOSE
         printf("alloc = %x\n", alloc);
         printf("rxhead = %d, rxtail = %d\n", rxhead, rxtail);
-        printf("elength = %d (rplr = %x)\n", elength, rplr);
 #endif
         if (rxbuf[rxtail].fcs != 0xc704dd7b)
           printf("RX FCS = %x\n", rxbuf[rxtail].fcs);
@@ -505,7 +546,7 @@ int eth_main() {
                     {
                       uint16_t chksum;
                       int hlen = sizeof(struct icmphdr);
-                      int len = elength - sizeof(struct ethip_hdr) - 4;
+                      int len = xlength - sizeof(struct ethip_hdr);
                       memcpy(BUF->ethhdr.dest.addr, BUF->ethhdr.src.addr, 6);
                       memcpy(BUF->ethhdr.src.addr, uip_lladdr.addr, 6);
                 
@@ -520,7 +561,7 @@ int eth_main() {
                       printf("sending ICMP reply (header = %d, total = %d, checksum = %x)\n", hlen, len, chksum);
                       PrintData((u_char *)icmp_hdr, len);
 #endif                      
-                      lite_queue(alloc, elength);
+                      lite_queue(alloc, xlength+4);
                     }
                   }
                   break;
@@ -560,10 +601,14 @@ int eth_main() {
                         process_udp_packet(udp_hdr->body, ulen-sizeof(struct udphdr));
                         break;
                       default:
+#ifdef VERBOSE                      
                         printf("IP Proto = UDP, source port = %d, dest port = %d, length = %d\n",
                            ntohs(udp_hdr->uh_sport),
                            dport,
                            ulen);
+#else
+			printf("?");
+#endif                      
                         break;
                       }
                   }
@@ -571,7 +616,13 @@ int eth_main() {
                 case    IPPROTO_IDP: printf("IP Proto = IDP\n"); break;
                 case    IPPROTO_TP: printf("IP Proto = TP\n"); break;
                 case    IPPROTO_DCCP: printf("IP Proto = DCCP\n"); break;
-                case    IPPROTO_IPV6: printf("IP Proto = IPV6\n"); break;
+                case    IPPROTO_IPV6:
+#ifdef VERBOSE                      
+		  printf("IP Proto = IPV6\n");
+#else
+		  printf("6");
+#endif                      
+		  break;
                 case    IPPROTO_RSVP: printf("IP Proto = RSVP\n"); break;
                 case    IPPROTO_GRE: printf("IP Proto = GRE\n"); break;
                 case    IPPROTO_ESP: printf("IP Proto = ESP\n"); break;
@@ -630,7 +681,11 @@ int eth_main() {
             }
             break;
           case ETH_P_IPV6:
+#ifdef VERBOSE                      
             printf("proto_type = IPV6\n");
+#else
+	    printf("6");
+#endif                      
             break;
           default:
             printf("proto_type = 0x%x\n", proto_type);
@@ -922,11 +977,24 @@ int raw_udp_main(void *msg, int payload_size)
 
 int main()
 {
+  uint32_t macaddr_lo, macaddr_hi;
   int sw = sd_resp(31);
   uart_init();
+  loopback_test(8, (sw & 0xF) == 0xF);
   board_mmc_power_init();  
 
   uart_send_string("lowRISC boot program\n=====================================\n");
+  mac_addr.addr[0] = (uint8_t)0xEE;
+  mac_addr.addr[1] = (uint8_t)0xE1;
+  mac_addr.addr[2] = (uint8_t)0xE2;
+  mac_addr.addr[3] = (uint8_t)0xE3;
+  mac_addr.addr[4] = (uint8_t)0xE4;
+  mac_addr.addr[5] = (uint8_t)(0xE0|(sw >> 12));
+
+  memcpy (&macaddr_lo, mac_addr.addr+2, sizeof(uint32_t));
+  memcpy (&macaddr_hi, mac_addr.addr+0, sizeof(uint16_t));
+  axi_write(MACLO_OFFSET, htonl(macaddr_lo));
+  axi_write(MACHI_OFFSET, MACHI_IRQ_EN|htons(macaddr_hi));
   if (sw & 1)
       {
         uart_send_string(HELLO"Jumping to DRAM because SW0 is high ..\r\n");
