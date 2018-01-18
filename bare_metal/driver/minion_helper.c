@@ -8,7 +8,7 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
-#include "uart.h"
+#include "hid.h"
 #include "errno.h"
 #include "memory.h"
 #include "minion_lib.h"
@@ -18,7 +18,7 @@
 #undef putchar
 void myputchar(char ch)
 {
-   uart_send(ch);
+   hid_send(ch);
 }
 
 struct completion { void *dummy; };
@@ -168,9 +168,9 @@ uint32_t rx_read_fifo(void);
 void queue_read_array(volatile uint32_t * const sd_ptr, uint32_t cnt, uint32_t iobuf[]);
 
 void open_handle(void);
-void uart_printf(const char *fmt, ...);
+void hid_printf(const char *fmt, ...);
 void log_printf(const char *fmt, ...);
-void uart_write(volatile uint32_t * const sd_ptr, uint32_t val);
+void hid_write(volatile uint32_t * const sd_ptr, uint32_t val);
 int cli_readline_into_buffer(const char *const prompt, char *buffer, int timeout);
 
 extern volatile uint32_t *sd_base;

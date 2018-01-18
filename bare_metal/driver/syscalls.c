@@ -10,7 +10,7 @@
 #include "encoding.h"
 #include "memory.h"
 #include "bits.h"
-#include "uart.h"
+#include "hid.h"
 
 #define SYS_write 64
 #define SYS_exit 93
@@ -59,9 +59,9 @@ void tohost_exit(long code)
       str[29-i] = (code & 0xF) + ((code & 0xF) < 10 ? '0' : 'a'-10);
       code >>= 4;
     }
-    uart_send_string(str);
+    hid_send_string(str);
   }
-  uart_send_string("tohost_exit was called, and this version does not return\n");
+  hid_send_string("tohost_exit was called, and this version does not return\n");
   for(;;)
     ;
 }
@@ -91,10 +91,10 @@ void handle_interrupt(long cause)
     case IRQ_HOST     : strcpy(code, "IRQ_HOST     "); break;
     default           : snprintf(code, sizeof(code), "IRQ_%x     ", cause);
     }
- uart_send_string(code);
+ hid_send_string(code);
  mip = read_csr(mip);
  snprintf(code, sizeof(code), "mip=%x\n", mip);
- uart_send_string(code);
+ hid_send_string(code);
 #endif
  if (cause==IRQ_M_DEV)
    external_interrupt();  
@@ -194,6 +194,7 @@ size_t err = 0, eth = 0, ddr = 0, rom = 0, bram = 0, intc = 0, spi = 0, uart = 0
 
 void _init(int cid, int nc)
 {
+#if 0
   size_t unknown = 0;
   char *unknownstr, *config = (char *)0x10000;
   for (int i = 128; i < 4096; i++)
@@ -258,7 +259,7 @@ void _init(int cid, int nc)
     }
   if (uart)
     {
-      uart_init((void *)uart);
+      hid_init((void *)uart);
       printf("Serial controller start 0x%x\n", uart);
       if (eth) printf("Ethernet start 0x%x\n", eth);
       if (err) printf("Error device start 0x%x\n", err);
@@ -270,6 +271,11 @@ void _init(int cid, int nc)
       if (unknown)
         printf("Unknown %s, start = 0x%x\n", unknownstr, unknown);
     }
+#else  
+  hid_init((void*)0x41000000);
+  hid_send(0x55);
+  hid_send(0xAA);
+#endif
   /*
   init_tls();
   thread_entry(cid, nc);
@@ -284,7 +290,7 @@ void _init(int cid, int nc)
     if (counters[i])
       pbuf += sprintf(pbuf, "%s = %d\n", counter_names[i], counters[i]);
   if (pbuf != buf)
-    uart_send_string(buf);
+    hid_send_string(buf);
 
   mini_printf("normal exit reached, code=%d\n", ret);
   for(;;);
@@ -301,7 +307,7 @@ void printhex(uint64_t x)
   }
   str[16] = 0;
 
-  uart_send_string(str);
+  hid_send_string(str);
 }
 
 static inline void printnum(void (*putch)(int, void**), void **putdat,

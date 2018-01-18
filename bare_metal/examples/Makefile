@@ -16,11 +16,10 @@ FPGA_DIR ?= $(TOP)/vsim
 BASE_DIR ?= .
 
 DRIVER_DIR = $(BASE_DIR)/../driver
-GEN_DIR = $(FPGA_DIR)/generated-src
 RISCV_PREFIX=riscv64-unknown-elf-
 RISCV_GCC = $(RISCV_PREFIX)gcc
 RISCV_DUMP = $(RISCV_PREFIX)objdump
-RISCV_GCC_OPTS = -static -std=gnu99 -g -Os -ffast-math -fno-common -fno-builtin-printf -I$(DRIVER_DIR) -I$(GEN_DIR) -I$(BASE_DIR)
+RISCV_GCC_OPTS = -static -std=gnu99 -g -Os -ffast-math -fno-common -fno-builtin-printf -I$(DRIVER_DIR) -I$(BASE_DIR)
 RISCV_DUMP_OPTS = -D -S -l
 RISCV_LINK = $(RISCV_PREFIX)gcc -T $(DRIVER_DIR)/test.ld
 RISCV_LINK_OPTS = -nostdlib -nostartfiles -ffast-math -Xlinker -M=mapfile
@@ -34,9 +33,9 @@ default: all
 
 TARGETS = boot dram hello sdcard trace jump flash tag selftest eth
 
-DRIVER_TARGETS = syscalls spi uart memory memcmp memcpy memset strcpy strlen strnlen wordcopy elf diskio ff minion_helper sdhci-minion-hash-md5 mini-printf random
+DRIVER_TARGETS = syscalls spi hid memory memcmp memcpy memset strcpy strlen strnlen wordcopy elf diskio ff minion_helper sdhci-minion-hash-md5 mini-printf random
 
-HEADERS += $(wildcard $(DRIVER_DIR)/*.h) $(GEN_DIR)/consts.hpp
+HEADERS += $(wildcard $(DRIVER_DIR)/*.h)
 
 #--------------------------------------------------------------------
 # Build Drivers

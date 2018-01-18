@@ -6,7 +6,7 @@
 #include "elf.h"
 #include "diskio.h"
 #include "ff.h"
-#include "uart.h"
+#include "hid.h"
 #include "memory.h"
 #include "encoding.h"
 #include "bits.h"
@@ -306,7 +306,7 @@ int memory_size (void)
 // 4K size read burst
 #define SD_READ_SIZE 4096
 
-static uint8_t *boot_file_buf = (uint8_t *)((uint64_t *)(MEM_BASE)) + ((uint64_t)get_ddr_size()) - MAX_FILE_SIZE; // at the end of DDR space
+static uint8_t *boot_file_buf; // at the end of DDR space
 static uint8_t *memory_base = (uint8_t *)((uint64_t *)(MEM_BASE));
 static char kernel[32];
 
@@ -401,8 +401,8 @@ int prepare (const char *cmdline)
     fr = f_read(&fil, boot_file_buf+fsize, SD_READ_SIZE, &br);  // Read a chunk of source file
     if (!fr)
       {
-	uart_send("|/-\\"[(fsize/SD_READ_SIZE)&3]);
-	uart_send('\b');
+	hid_send("|/-\\"[(fsize/SD_READ_SIZE)&3]);
+	hid_send('\b');
 	fsize += br;
       }
   } while(!(fr || (br == 0)));
@@ -436,8 +436,8 @@ void mygets(char *cmd)
   char *chp = cmd;
   do
     {
-      ch = uart_recv();
-      uart_send(ch);
+      ch = hid_recv();
+      hid_send(ch);
       *chp++ = ch;
     }
   while (ch != '\n');
@@ -563,8 +563,10 @@ void minion_dispatch(const char *ucmd)
 	printf("FLASH_BASE = %x\n", FLASH_BASE);
 	printf("FLASH_SIZE = %x\n", FLASH_SIZE);
 #endif
-	printf("UART_BASE = %x\n", UART_BASE);
-	printf("UART_SIZE = %x\n", UART_SIZE);
+#ifdef ADD_HID        
+	printf("HID_BASE = %x\n", HID_BASE);
+	printf("HID_SIZE = %x\n", HID_SIZE);
+#endif        
 #ifdef ADD_SPI	
 	printf("SPI_BASE = %x\n", SPI_BASE);
 	printf("SPI_SIZE = %x\n", SPI_SIZE);
@@ -731,6 +733,7 @@ void minion_dispatch(const char *ucmd)
 
 int main (void)
 {
+boot_file_buf = (uint8_t *)((uint64_t *)(MEM_BASE)) + ((uint64_t)get_ddr_size()) - MAX_FILE_SIZE;
 #ifdef HID_BASE  
   board_mmc_power_init();
 #endif  
@@ -738,19 +741,26 @@ int main (void)
 #ifdef HID_BASE  
     if (sd_base[31] & 1)
       {
-	uart_send_string("Jumping to DRAM because SW0 is high ..\r\n");
+	hid_send_string("Jumping to DRAM because SW0 is high ..\r\n");
 	just_jump();
       }
     if (sd_base[31] & 2)
       {
-	uart_send_string("Booting from FLASH because SW1 is high ..\r\n");
+	hid_send_string("Booting from FLASH because SW1 is high ..\r\n");
 	boot(prepare(""));
       }
 #endif  
-    uart_send_string("selftest> ");
+    hid_send_string("selftest> ");
     mygets(linbuf);
     minion_dispatch(linbuf);
   } while (*linbuf != 'q');
   return 0;
 }
 
+void external_interrupt(void)
+{
+  int i, claim, handled = 0;
+#ifdef VERBOSE
+  printf("Hello external interrupt! "__TIMESTAMP__"\n");
+#endif  
+}
