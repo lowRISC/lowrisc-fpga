@@ -247,3 +247,30 @@
 /  included somewhere in the scope of ff.c. */
 
 
+#define _WORD_ACCESS	0
+/* The _WORD_ACCESS option is an only platform dependent option. It defines
+/  which access method is used to the word data on the FAT volume.
+/
+/   0: Byte-by-byte access. Always compatible with all platforms.
+/   1: Word access. Do not choose this unless under both the following conditions.
+/
+/  * Address misaligned memory access is always allowed to ALL instructions.
+/  * Byte order on the memory is little-endian.
+/
+/  If it is the case, _WORD_ACCESS can also be set to 1 to reduce code size.
+/  Following table shows allowable settings of some type of processors.
+/
+/  ARM7TDMI   0   *2          ColdFire   0    *1         V850E      0    *2
+/  Cortex-M3  0   *3          Z80        0/1             V850ES     0/1
+/  Cortex-M0  0   *2          x86        0/1             TLCS-870   0/1
+/  AVR        0/1             RX600(LE)  0/1             TLCS-900   0/1
+/  AVR32      0   *1          RL78       0    *2         R32C       0    *2
+/  PIC18      0/1             SH-2       0    *1         M16C       0/1
+/  PIC24      0   *2          H8S        0    *1         MSP430     0    *2
+/  PIC32      0   *1          H8/300H    0    *1         8051       0/1
+/
+/  *1:Big-endian.
+/  *2:Unaligned memory access is not supported.
+/  *3:Some compilers generate LDM/STM for mem_cpy function.
+*/
+

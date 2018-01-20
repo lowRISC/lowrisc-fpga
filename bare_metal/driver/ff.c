@@ -42,7 +42,6 @@
  */
 /*---------------------------------------------------------------------------*/
 
-#include "mini-printf.h"
 #include "ff.h"         /* Declarations of FatFs API */
 #include "diskio.h"     /* Declarations of disk I/O functions */
 
@@ -2271,7 +2270,6 @@ FRESULT find_volume (   /* FR_OK(0): successful, !=0: any error occurred */
   stat = disk_initialize(fs->drv);  /* Initialize the physical drive */
   if (stat & STA_NOINIT)                /* Check if the initialization succeeded */
     return FR_NOT_READY;            /* Failed to initialize due to no medium or hard error */
-  //  printf("disk ready\n");
   if (!_FS_READONLY && wmode && (stat & STA_PROTECT))   /* Check disk write protection if needed */
     return FR_WRITE_PROTECTED;
 #if _MAX_SS != _MIN_SS                      /* Get sector size (multiple sector size cfg only) */
@@ -2280,21 +2278,11 @@ FRESULT find_volume (   /* FR_OK(0): successful, !=0: any error occurred */
 #endif
   /* Find an FAT partition on the drive. Supports only generic partitioning, FDISK and SFD. */
   bsect = 0;
-  //  printf("check fs\n");
   fmt = check_fs(fs, bsect);                    /* Load sector 0 and check if it is an FAT boot sector as SFD */
-  //  printf("check fmt=%d\n", fmt);
   if (fmt == 1 || (!fmt && (LD2PT(vol)))) { /* Not an FAT boot sector or forced partition number */
     for (i = 0; i < 4; i++) {           /* Get partition offset */
-      //      printf("%d:  Get partition offset \n", i);
       pt = fs->win + MBR_Table + i * SZ_PTE;
-      /*
-      printf("%d:  pt=%x\n", i, pt);
-      printf("%d:  pt[4]=%x\n", i, pt[4]);
-      for (int j = 4; j < 12; j++)
-        printf("pt[%d]=%x ", j, pt[j]);
-      */
       br[i] = pt[4] ? LD_DWORD(&pt[8]) : 0;
-      //      printf("br[%d]=%x\n", i, br[i]);
     }
     i = LD2PT(vol);                     /* Partition number: 0:auto, 1-4:forced */
     if (i) i--;
@@ -2306,8 +2294,6 @@ FRESULT find_volume (   /* FR_OK(0): successful, !=0: any error occurred */
   if (fmt == 3) return FR_DISK_ERR;     /* An error occured in the disk I/O layer */
   if (fmt) return FR_NO_FILESYSTEM;     /* No FAT volume is found */
 
-  //  printf("FAT volume found\n");
-  
   /* An FAT volume is found. Following code initializes the file system object */
 
   if (LD_WORD(fs->win + BPB_BytsPerSec) != SS(fs))  /* (BPB_BytsPerSec must be equal to the physical sector size) */

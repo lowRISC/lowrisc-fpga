@@ -5,7 +5,7 @@
 #include "bits.h"
 #include "diskio.h"
 #include "ff.h"
-#include "uart.h"
+#include "hid.h"
 #include "elf.h"
 #include "mini-printf.h"
 #include "memory.h"
@@ -36,8 +36,8 @@ int main (void)
   }
 
   // Open a file
-  printf("Load boot.bin into memory\n");
-  fr = f_open(&fil, "boot.bin", FA_READ);
+  printf("Load boot0000.bin into memory\n");
+  fr = f_open(&fil, "boot0000.bin", FA_READ);
   if (fr) {
     printf("Failed to open boot!\n");
     return (int)fr;
@@ -52,8 +52,8 @@ int main (void)
     fr = f_read(&fil, boot_file_buf+fsize, SD_READ_SIZE, &br);  // Read a chunk of source file
     if (!fr)
       {
-	uart_send("|/-\\"[(fsize/SD_READ_SIZE)&3]);
-	uart_send('\b');
+	hid_send('\b');
+	hid_send("|/-\\"[(fsize/SD_READ_SIZE)&3]);
 	fsize += br;
       }
   } while(!(fr || br == 0));
@@ -83,4 +83,12 @@ int main (void)
   write_csr(mstatus, mstatus);
   write_csr(mepc, memory_base);
   asm volatile ("mret");
+}
+
+void external_interrupt(void)
+{
+  int i, claim, handled = 0;
+#ifdef VERBOSE
+  printf("Hello external interrupt! "__TIMESTAMP__"\n");
+#endif  
 }

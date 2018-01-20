@@ -66,3 +66,11 @@ int main (void)
 
   return 0;
 }
+
+void external_interrupt(void)
+{
+  int i, claim, handled = 0;
+#ifdef VERBOSE
+  printf("Hello external interrupt! "__TIMESTAMP__"\n");
+#endif  
+}

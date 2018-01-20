@@ -190,13 +190,17 @@ static void init_tls()
   memset(thread_pointer + tdata_size, 0, tbss_size);
 }
 
-size_t err = 0, eth = 0, ddr = 0, rom = 0, bram = 0, intc = 0, spi = 0, uart = 0, clin = 0, dumh = 0;
+size_t err = 0, eth = 0, ddr = 0, rom = 0, bram = 0, intc = 0, clin = 0, hid = 0;
 
 void _init(int cid, int nc)
 {
-#if 0
+  extern int main(int, char **);
+  extern char _bss[], _end[];
   size_t unknown = 0;
   char *unknownstr, *config = (char *)0x10000;
+  size_t bsslen = _end - _bss;
+  memset(_bss, 0, bsslen);
+#if 1
   for (int i = 128; i < 4096; i++)
     {
       char ch = config[i] & 0x7f; 
@@ -212,7 +216,7 @@ void _init(int cid, int nc)
               j++;
             }
           j = i - 1;
-          while ((config[j] >= 'a' && config[j] <= 'z') || config[j] == '-')
+          while ((config[j] >= '0' && config[j] <= '9') || (config[j] >= 'a' && config[j] <= 'z') || config[j] == '-')
             j--;
           if ((++j < i) && addr)
             {
@@ -228,9 +232,6 @@ void _init(int cid, int nc)
                 case 'clin':
                   clin = addr;
                   break;
-                case 'dumh':
-                  dumh = addr;
-                  break;
                 case 'erro':
                   err = addr;
                   break;
@@ -243,11 +244,15 @@ void _init(int cid, int nc)
                 case 'rom@':
                   rom = addr;
                   break;
-                case 'seri':
-                  uart = addr;
-                  break;
-                case 'spi@':
-                  spi = addr;
+                case 'mmio':
+                  if (config[j+4] == '@')
+                    {
+                    bram = addr;
+                    }
+                  else
+                    {
+                      hid = addr;
+                    }
                   break;
                 default:
                   unknown = addr;
@@ -257,22 +262,20 @@ void _init(int cid, int nc)
             }
         }
     }
-  if (uart)
+  if (hid)
     {
-      hid_init((void *)uart);
-      printf("Serial controller start 0x%x\n", uart);
+      hid_init((void *)hid);
+      printf("MMIO2 (32-bit) start 0x%x\n", hid);
       if (eth) printf("Ethernet start 0x%x\n", eth);
       if (err) printf("Error device start 0x%x\n", err);
       if (rom) printf("ROM start 0x%x\n", rom);
       if (bram) printf("Block RAM start 0x%x\n", bram);
       if (ddr) printf("DDR memory start 0x%x\n", ddr);
       if (intc) printf("Interrupt controller start 0x%x\n", intc);
-      if (spi) printf("SPI controller start 0x%x\n", spi);
       if (unknown)
         printf("Unknown %s, start = 0x%x\n", unknownstr, unknown);
     }
 #else  
-  hid_init((void*)0x41000000);
   hid_send(0x55);
   hid_send(0xAA);
 #endif

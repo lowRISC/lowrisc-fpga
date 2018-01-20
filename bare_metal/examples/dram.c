@@ -25,7 +25,7 @@
 #include <errno.h>
 #include <limits.h>
 #include "memory.h"
-#include "uart.h"
+#include "hid.h"
 #include "mini-printf.h"
 
 #define rand32() ((unsigned int) rand() | ( (unsigned int) rand() << 16))
@@ -145,13 +145,13 @@ int test_random_value(ulv *bufa, ulv *bufb, size_t count) {
     ul j = 0;
     size_t i;
 
-    uart_send(' ');
+    hid_send(' ');
     
     for (i = 0; i < count; i++) {
         *p1++ = *p2++ = rand_ul();
         if (!(i % PROGRESSOFTEN)) {
-            uart_send('\b');
-            uart_send(progress[++j % PROGRESSLEN]);
+            hid_send('\b');
+            hid_send(progress[++j % PROGRESSLEN]);
             
         }
     }
@@ -490,7 +490,7 @@ int test_8bit_wide_random(ulv* bufa, ulv* bufb, size_t count) {
     unsigned int b, j = 0;
     size_t i;
 
-    uart_send(' ');
+    hid_send(' ');
     
     for (attempt = 0; attempt < 2;  attempt++) {
         if (attempt & 1) {
@@ -507,8 +507,8 @@ int test_8bit_wide_random(ulv* bufa, ulv* bufb, size_t count) {
                 *p1++ = *t++;
             }
             if (!(i % PROGRESSOFTEN)) {
-                uart_send('\b');
-                uart_send(progress[++j % PROGRESSLEN]);
+                hid_send('\b');
+                hid_send(progress[++j % PROGRESSLEN]);
                 
             }
         }
@@ -528,7 +528,7 @@ int test_16bit_wide_random(ulv* bufa, ulv* bufb, size_t count) {
     unsigned int b, j = 0;
     size_t i;
 
-    uart_send( ' ' );
+    hid_send( ' ' );
     for (attempt = 0; attempt < 2; attempt++) {
         if (attempt & 1) {
             p1 = (u16v *) bufa;
@@ -544,8 +544,8 @@ int test_16bit_wide_random(ulv* bufa, ulv* bufb, size_t count) {
                 *p1++ = *t++;
             }
             if (!(i % PROGRESSOFTEN)) {
-                uart_send('\b');
-                uart_send(progress[++j % PROGRESSLEN]);
+                hid_send('\b');
+                hid_send(progress[++j % PROGRESSLEN]);
                 
             }
         }
@@ -645,17 +645,18 @@ int testrange(void volatile *aligned, size_t bufsize, ul loops, int narrow) {
 
 int main()
 {
-    uart_send_string("\nBare metal DRAM test\n");
+    hid_send_string("\nBare metal DRAM test\n");
     printf("memtester version " __version__ " (%d-bit)\n", UL_LEN);
     printf("Copyright (C) 2001-2012 Charles Cazabon.\n");
     printf("Licensed under the GNU General Public License version 2 (only).\n");
     printf("\n");
-#ifdef SELFTEST_MODE
-    testrange((void volatile *) 0x4000C000, 0x4000, 1, 1);
-#endif    
-#ifdef ETH_BASE
-    testrange((void volatile *) ETH_BASE+0x1000, 0x800, 1, 0);
-    testrange((void volatile *) ETH_BASE+0x1800, 0x800, 1, 0);
-#endif    
-    testrange((void volatile *) ddr, 0x8000000, 1, 1);
+    testrange((void volatile *) 0x80000000, 0x8000000, 1, 1);
+}
+
+void external_interrupt(void)
+{
+  int i, claim, handled = 0;
+#ifdef VERBOSE
+  printf("Hello external interrupt! "__TIMESTAMP__"\n");
+#endif  
 }

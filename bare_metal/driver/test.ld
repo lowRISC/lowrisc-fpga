@@ -37,6 +37,8 @@ SECTIONS
     *(.sdata .sdata.* .gnu.linkonce.s.*)
   }
 
+  _bss = .;
+
   /* bss segment */
   .sbss : {
     *(.sbss .sbss.* .gnu.linkonce.sb.*)
