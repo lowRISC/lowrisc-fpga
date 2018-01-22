@@ -252,6 +252,7 @@ void _init(int cid, int nc)
                   else
                     {
                       hid = addr;
+                      eth = addr + 0x20000;
                     }
                   break;
                 default:

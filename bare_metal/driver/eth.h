@@ -4,9 +4,8 @@
 #define ETH_HEADER_H
 
 #include <stdint.h>
-#include "dev_map.h"
 
-/* Register offsets for the EmacLite Core */
+/* Register offsets for the LowRISC Core */
 #define TXBUFF_OFFSET       0x1000          /* Transmit Buffer */
 
 #define MACLO_OFFSET        0x0800          /* MAC address low 32-bits */
