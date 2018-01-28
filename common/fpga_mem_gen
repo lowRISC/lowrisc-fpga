@@ -159,7 +159,16 @@ def gen_mem(name, width, depth, mask_gran, mask_seg, ports):
     combinational.append('  if (%sclk && latch_%sen)' % (prefix, prefix))
     combinational.append('    ram[latch_%saddr] <= latch_%sdata;' % (prefix, prefix))
 
+  if depth > 65536:
+    limit = 65536
+    decl.append('`ifdef FPGA_FULL')
+    decl.append('reg [%d:0] ram [%d:0];' % (width-1, limit-1))
+    decl.append('`else')
+  else:
+    limit = depth
   decl.append('reg [%d:0] ram [%d:0];' % (width-1, depth-1))
+  if depth > 65536:
+    decl.append('`endif')
   decl.append('`ifdef RANDOMIZE_MEM_INIT')
   decl.append('  integer initvar;')
   decl.append('  initial begin')
