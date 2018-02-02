@@ -31,7 +31,7 @@ RISCV_LINK_OPTS = -nostdlib -nostartfiles -ffast-math -Xlinker -M=mapfile
 
 default: all
 
-TARGETS = boot dram hello sdcard trace jump flash tag selftest eth
+TARGETS = boot dram hello sdcard trace jump flash tag selftest eth zero
 
 DRIVER_TARGETS = syscalls hid memory memcmp memcpy memset strcpy strlen strnlen wordcopy elf diskio ff minion_helper sdhci-minion-hash-md5 mini-printf random
 
