@@ -31,6 +31,7 @@ int rxhead, rxtail, txhead, txtail;
 typedef struct inqueue_t {
   void *alloc;
   int rplr;
+  int fcs;
 } inqueue_t;
 
 inqueue_t *rxbuf;
@@ -189,18 +190,20 @@ uint32_t __bswap_32(uint32_t x)
 
 #define min(x,y) (x) < (y) ? (x) : (y)
 
+int eth_discard = 0;
 void process_my_packet(int size, const u_char *buffer);
 void *sbrk(size_t len);
 
 static int copyin_pkt(void)
 {
   int i;
+  int fcs = axi_read(RFCS_OFFSET);
   int rplr = axi_read(RPLR_OFFSET);
   int length = rplr & RPLR_LENGTH_MASK;
 #ifdef VERBOSE
       printf("length = %d (rplr = %x)\n", length, rplr);
 #endif      
-  if (length >= 14)
+      if ((length >= 14) && !eth_discard)
     {
       int rnd;
       uint32_t *alloc;
@@ -210,6 +213,7 @@ static int copyin_pkt(void)
         {
           alloc[i] = axi_read(RXBUFF_OFFSET+(i<<2));
         }
+      rxbuf[rxhead].fcs = fcs;
       rxbuf[rxhead].rplr = rplr;
       rxbuf[rxhead].alloc = alloc;
       rxhead = (rxhead + 1) % queuelen;
@@ -293,7 +297,7 @@ static uintptr_t old_mstatus, old_mie;
 
 #define rand32() ((unsigned int) rand() | ( (unsigned int) rand() << 16))
   
-void loopback_test(int loops)
+void loopback_test(int loops, int sim)
   {
     int j;
     axi_write(MACHI_OFFSET, MACHI_LOOPBACK_MASK);
@@ -303,22 +307,16 @@ void loopback_test(int loops)
 	int i, waiting, actualwait, match = 0, waitcnt = 0;
 	int tstcnt = 2 << j;
 	if (tstcnt > maxcnt) tstcnt = maxcnt; /* max length packet */
-#ifdef SIM
-#else
-	printf("Selftest iteration %d\n", j);
-#endif
+	if (!sim) printf("Selftest iteration %d\n", j);
       /* bit-level digital loopback */
       axi_write(RSR_OFFSET, 0); /* clear pending receive packet, if any */
       /* random inits */
-#ifdef SIM
-#else
-      for (i = 0; i < tstcnt*4; i += 4)
+      if (!sim) for (i = 0; i < tstcnt*4; i += 4)
 	{
 	axi_write(TXBUFF_OFFSET+i, rand32());
 	axi_write(RXBUFF_OFFSET+i, i);
 	//	axi_write(AXISBUFF_OFFSET+i, i);
 	}
-#endif
       /* systematic inits */
       axi_write(TXBUFF_OFFSET, 0xFFFFFFFF);
       axi_write(TXBUFF_OFFSET+4, 0xFFFFFFFF);
@@ -339,27 +337,25 @@ void loopback_test(int loops)
 	  uint32_t axis_rslt = axi_read(RXBUFF_OFFSET+(i<<2));
 	  if (xmit_rslt != axis_rslt)
 	    {
-#ifdef SIM
+	      if (sim)
 	      axi_write(MACHI_OFFSET, MACHI_LOOPBACK_MASK|MACHI_COOKED_MASK);
-#else
+	      else
 	      printf("Buffer offset %d: xmit=%x, axis=%x\n", i, xmit_rslt, axis_rslt);
-#endif
 	    }
 	  else
 	    ++match;
 	}
-#ifdef SIM
-#else
+      if (!sim)
       printf("Selftest matches=%d/%d, delay = %d\n", match, tstcnt, actualwait);
-#endif
       }
   }
 
-int main() {
+int main(void) {
   uip_ipaddr_t addr;
   uint32_t macaddr_lo, macaddr_hi;
+  int sw = sd_resp(31);
   uart_init();
-  loopback_test(8);
+  loopback_test(8, (sw & 0xF) == 0xF);
   printf("Hello LowRISC! "__TIMESTAMP__"\n");
   rxbuf = (inqueue_t *)sbrk(sizeof(inqueue_t)*queuelen);
   txbuf = (outqueue_t *)sbrk(sizeof(outqueue_t)*queuelen);
