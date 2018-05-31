@@ -6,16 +6,16 @@
 #include <stdint.h>
 
 /* Register offsets for the LowRISC Core */
-#define TXBUFF_OFFSET       0x1000          /* Transmit Buffer */
+#define TXBUFF_OFFSET       0x2000          /* Transmit Buffer */
 
-#define MACLO_OFFSET        0x0800          /* MAC address low 32-bits */
-#define MACHI_OFFSET        0x0804          /* MAC address high 16-bits and MAC ctrl */
-#define TPLR_OFFSET         0x0808          /* Tx packet length */
-#define TFCS_OFFSET         0x080C          /* Tx frame check sequence register */
-#define MDIOCTRL_OFFSET     0x0810          /* MDIO Control Register */
-#define RFCS_OFFSET         0x0814          /* Rx frame check sequence register */
-#define RSR_OFFSET          0x0818          /* Rx status and reset register */
-#define RPLR_OFFSET         0x081C          /* Rx packet length register */
+#define MACLO_OFFSET        0x1000          /* MAC address low 32-bits */
+#define MACHI_OFFSET        0x1008          /* MAC address high 16-bits and MAC ctrl */
+#define TPLR_OFFSET         0x1010          /* Tx packet length */
+#define TFCS_OFFSET         0x1018          /* Tx frame check sequence register */
+#define MDIOCTRL_OFFSET     0x1020          /* MDIO Control Register */
+#define RFCS_OFFSET         0x1028          /* Rx frame check sequence register */
+#define RSR_OFFSET          0x1030          /* Rx status and reset register */
+#define RPLR_OFFSET         0x1038          /* Rx packet length register */
 
 #define RXBUFF_OFFSET       0x0000          /* Receive Buffer */
 #define MDIORD_RDDATA_MASK    0x0000FFFF    /* Data to be Read */

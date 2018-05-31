@@ -1,6 +1,6 @@
 // See LICENSE for license details.
 
-#include "memory.h"
+#include "lowrisc_memory_map.h"
 
 volatile uint64_t * get_bram_base() {
   return (uint64_t *)bram;

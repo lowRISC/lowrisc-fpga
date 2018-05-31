@@ -8,13 +8,19 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <limits.h>
-#include "consts.hpp"
 
 extern volatile uint64_t * get_bram_base();
 extern volatile uint64_t * get_ddr_base();
 extern volatile uint64_t   get_ddr_size();
 extern volatile uint64_t * get_flash_base();
 
-extern size_t err, ddr, rom, bram, intc, spi, uart;
-
+enum {  bram_base_addr = 0x40000000,
+        sd_base_addr   = 0x40010000,        
+        sd_bram_addr   = 0x40018000,
+        eth_base_addr  = 0x40020000,
+        keyb_base_addr = 0x40030000, // These have been relocated
+        uart_base_addr = 0x40034000,
+        vga_base_addr  = 0x40038000,
+      };
+      
 #endif

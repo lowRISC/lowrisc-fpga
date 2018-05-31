@@ -4,7 +4,7 @@
 #include "bits.h"
 #include "elf.h"
 #include "hid.h"
-#include "memory.h"
+#include "lowrisc_memory_map.h"
 #include "eth.h"
 #include "mini-printf.h"
 #include "minion_lib.h"
@@ -47,22 +47,22 @@ outqueue_t *txbuf;
 #define UDP_DEBUG
 
 // LowRISC Ethernet base address
-static volatile unsigned int *eth_base;
+static volatile uint64_t *const eth_base = (volatile uint64_t *)eth_base_addr;
 
-static void axi_write(size_t addr, int data)
+static void eth_write(size_t addr, uint64_t data)
 {
-  if (addr < 0x2000)
-    eth_base[addr >> 2] = data;
+  if ((addr < 0x4000) && !(addr&7))
+    eth_base[addr >> 3] = data;
   else
-    printf("axi_write(%x,%x) out of range\n", addr, data);
+    mini_printf("eth_write(%x,%x) out of range\n", addr, data);
 }
 
-static int axi_read(size_t addr)
+static uint64_t eth_read(size_t addr)
 {
-  if (addr < 0x2000)
-    return eth_base[addr >> 2];
+  if ((addr < 0x4000) && !(addr&7))
+    return eth_base[addr >> 3];
   else
-    printf("axi_read(%x) out of range\n", addr);
+    mini_printf("eth_read(%x) out of range\n", addr);
 }
 
 /* General Ethernet Definitions */
@@ -197,36 +197,36 @@ void *sbrk(size_t len);
 static int copyin_pkt(void)
 {
   int i;
-  int fcs = axi_read(RFCS_OFFSET);
-  int rplr = axi_read(RPLR_OFFSET);
+  int fcs = eth_read(RFCS_OFFSET);
+  int rplr = eth_read(RPLR_OFFSET);
   int length = rplr & RPLR_LENGTH_MASK;
 #ifdef VERBOSE
-      printf("length = %d (rplr = %x)\n", length, rplr);
+      mini_printf("length = %d (rplr = %x)\n", length, rplr);
 #endif      
       if ((length >= 14) && !eth_discard)
     {
       int rnd;
-      uint32_t *alloc;
-      rnd = ((length-1|3)+1); /* round to a multiple of 4 */
+      uint64_t *alloc;
+      rnd = ((length-1|7)+1); /* round to a multiple of 8 */
       alloc = sbrk(rnd);
-      for (i = 0; i < rnd/4; i++)
+      for (i = 0; i < rnd/8; i++)
         {
-          alloc[i] = axi_read(RXBUFF_OFFSET+(i<<2));
+          alloc[i] = eth_read(RXBUFF_OFFSET+(i<<3));
         }
       rxbuf[rxhead].fcs = fcs;
       rxbuf[rxhead].rplr = rplr;
       rxbuf[rxhead].alloc = alloc;
       rxhead = (rxhead + 1) % queuelen;
     }
-  axi_write(RSR_OFFSET, 0); /* acknowledge */
+  eth_write(RSR_OFFSET, 0); /* acknowledge */
   return length;
 }
 
 static void lite_queue(void *buf, int length)
 {
   int i, rslt;
-  int rnd = ((length-1|3)+1);
-  uint32_t *alloc = sbrk(rnd);
+  int rnd = ((length-1|7)+1);
+  uint64_t *alloc = sbrk(rnd);
   memcpy(alloc, buf, length);
   txbuf[txhead].alloc = alloc;
   txbuf[txhead].len = length;
@@ -251,14 +251,14 @@ void external_interrupt(void)
 {
   int claim, handled = 0;
 #ifdef VERBOSE
-  printf("Hello external interrupt! "__TIMESTAMP__"\n");
+  mini_printf("Hello external interrupt! "__TIMESTAMP__"\n");
 #endif  
   claim = plic[0x80001];
   /* Check if there is Rx Data available */
-  if (axi_read(RSR_OFFSET) & RSR_RECV_DONE_MASK)
+  if (eth_read(RSR_OFFSET) & RSR_RECV_DONE_MASK)
     {
 #ifdef VERBOSE
-      printf("Ethernet interrupt\n");
+      mini_printf("Ethernet interrupt\n");
 #endif  
       int length = copyin_pkt();
       handled = 1;
@@ -266,12 +266,12 @@ void external_interrupt(void)
   if (hid_check_read_irq())
     {
       int rslt = hid_read_irq();
-      printf("uart interrupt read %x (%c)\n", rslt, rslt);
+      mini_printf("uart interrupt read %x (%c)\n", rslt, rslt);
       handled = 1;
     }
   if (!handled)
     {
-      printf("unhandled interrupt!\n");
+      mini_printf("unhandled interrupt!\n");
     }
   plic[0x80001] = claim;
 }
@@ -304,53 +304,53 @@ static uintptr_t old_mstatus, old_mie;
 void loopback_test(int loops, int sim)
   {
     int j;
-    axi_write(MACHI_OFFSET, MACHI_LOOPBACK_MASK);
+    eth_write(MACHI_OFFSET, MACHI_LOOPBACK_MASK);
     for (j = 1; j <= loops; j++)
       {
 	enum {maxcnt=375};
 	int i, waiting, actualwait, match = 0, waitcnt = 0;
 	int tstcnt = 2 << j;
 	if (tstcnt > maxcnt) tstcnt = maxcnt; /* max length packet */
-	if (!sim) printf("Selftest iteration %d\n", j);
+	if (!sim) mini_printf("Selftest iteration %d\n", j);
       /* bit-level digital loopback */
-      axi_write(RSR_OFFSET, 0); /* clear pending receive packet, if any */
+      eth_write(RSR_OFFSET, 0); /* clear pending receive packet, if any */
       /* random inits */
       if (!sim) for (i = 0; i < tstcnt*4; i += 4)
 	{
-	axi_write(TXBUFF_OFFSET+i, rand32());
-	axi_write(RXBUFF_OFFSET+i, i);
-	//	axi_write(AXISBUFF_OFFSET+i, i);
+	eth_write(TXBUFF_OFFSET+i, rand32());
+	eth_write(RXBUFF_OFFSET+i, i);
+	//	eth_write(AXISBUFF_OFFSET+i, i);
 	}
       /* systematic inits */
-      axi_write(TXBUFF_OFFSET, 0xFFFFFFFF);
-      axi_write(TXBUFF_OFFSET+4, 0xFFFFFFFF);
-      axi_write(TXBUFF_OFFSET+8, 0xDEADBEEF);
-      axi_write(TXBUFF_OFFSET+12, 0x55555555);
+      eth_write(TXBUFF_OFFSET, 0xFFFFFFFF);
+      eth_write(TXBUFF_OFFSET+4, 0xFFFFFFFF);
+      eth_write(TXBUFF_OFFSET+8, 0xDEADBEEF);
+      eth_write(TXBUFF_OFFSET+12, 0x55555555);
       /* launch the packet */
-      axi_write(TPLR_OFFSET,tstcnt*4);
+      eth_write(TPLR_OFFSET,tstcnt*4);
       /* wait for loopback to do its work */
       do 
 	{
-	  waiting = (axi_read(RSR_OFFSET) == 0);
+	  waiting = (eth_read(RSR_OFFSET) == 0);
 	  if (waiting) actualwait = waitcnt;
 	}
       while ((waitcnt++ < tstcnt) || waiting);
       for (i = 0; i < tstcnt; i++)
 	{
-	  uint32_t xmit_rslt = axi_read(TXBUFF_OFFSET+(i<<2));
-	  uint32_t axis_rslt = axi_read(RXBUFF_OFFSET+(i<<2));
+	  uint32_t xmit_rslt = eth_read(TXBUFF_OFFSET+(i<<2));
+	  uint32_t axis_rslt = eth_read(RXBUFF_OFFSET+(i<<2));
 	  if (xmit_rslt != axis_rslt)
 	    {
 	      if (sim)
-	      axi_write(MACHI_OFFSET, MACHI_LOOPBACK_MASK|MACHI_COOKED_MASK);
+	      eth_write(MACHI_OFFSET, MACHI_LOOPBACK_MASK|MACHI_COOKED_MASK);
 	      else
-	      printf("Buffer offset %d: xmit=%x, axis=%x\n", i, xmit_rslt, axis_rslt);
+	      mini_printf("Buffer offset %d: xmit=%x, axis=%x\n", i, xmit_rslt, axis_rslt);
 	    }
 	  else
 	    ++match;
 	}
       if (!sim)
-      printf("Selftest matches=%d/%d, delay = %d\n", match, tstcnt, actualwait);
+      mini_printf("Selftest matches=%d/%d, delay = %d\n", match, tstcnt, actualwait);
       }
   }
 
@@ -367,9 +367,9 @@ void init_plic(void)
     }
   plic[0x80000] = 0;
   for (i = 0; i < 4; i++)
-    printf("%x: %x\n", i, plic[i]);
+    mini_printf("%x: %x\n", i, plic[i]);
   for (i = 0x800; i < 0x804; i++)
-    printf("%x: %x\n", i, plic[i]);
+    mini_printf("%x: %x\n", i, plic[i]);
 }
 
 int eth_main(void) {
@@ -380,9 +380,9 @@ int eth_main(void) {
   memset(maskarray, 0, sizeof_maskarray);
   
 #ifdef VERBOSE  
-  printf("MAC = %x:%x\n", axi_read(MACHI_OFFSET)&MACHI_MACADDR_MASK, axi_read(MACLO_OFFSET));
+  mini_printf("MAC = %x:%x\n", eth_read(MACHI_OFFSET)&MACHI_MACADDR_MASK, eth_read(MACLO_OFFSET));
   
-  printf("MAC address = %02x:%02x:%02x:%02x:%02x:%02x.\n",
+  mini_printf("MAC address = %02x:%02x:%02x:%02x:%02x:%02x.\n",
          mac_addr.addr[0],
          mac_addr.addr[1],
          mac_addr.addr[2],
@@ -394,54 +394,54 @@ int eth_main(void) {
   uip_setethaddr(mac_addr);
   
   uip_ipaddr(&addr, 192,168,0,51);
-  printf("IP Address:  %d.%d.%d.%d\n", uip_ipaddr_to_quad(&addr));
+  mini_printf("IP Address:  %d.%d.%d.%d\n", uip_ipaddr_to_quad(&addr));
   uip_sethostaddr(&addr);
     
   uip_ipaddr(&addr, 255,255,255,0);
   uip_setnetmask(&addr);
-  printf("Subnet Mask: %d.%d.%d.%d\n", uip_ipaddr_to_quad(&addr));
+  mini_printf("Subnet Mask: %d.%d.%d.%d\n", uip_ipaddr_to_quad(&addr));
   memset(peer_addr, -1, sizeof(peer_addr));
   peer_port = PORT;
   
-  printf("Enabling interrupts\n");
+  mini_printf("Enabling interrupts\n");
   old_mstatus = read_csr(mstatus);
   old_mie = read_csr(mie);
   set_csr(mstatus, MSTATUS_MIE|MSTATUS_HIE);
   set_csr(mie, ~(1 << IRQ_M_TIMER));
 #if 0
-  printf("Enabling UART interrupt\n");
+  mini_printf("Enabling UART interrupt\n");
   hid_enable_read_irq();
 #endif
   do {
-    if ((txhead != txtail) && (TPLR_BUSY_MASK & ~axi_read(TPLR_OFFSET)))
+    if ((txhead != txtail) && (TPLR_BUSY_MASK & ~eth_read(TPLR_OFFSET)))
       {
-        uint32_t *alloc = txbuf[txtail].alloc;
+        uint64_t *alloc = txbuf[txtail].alloc;
         int length = txbuf[txtail].len;
         int i, rslt;
 #ifdef VERBOSE
-        printf("TX pending\n");
+        mini_printf("TX pending\n");
 #endif
-        for (i = 0; i < ((length-1|3)+1)/4; i++)
+        for (i = 0; i < ((length-1|7)+1)/8; i++)
           {
-            axi_write(TXBUFF_OFFSET+(i<<2), alloc[i]);
+            eth_write(TXBUFF_OFFSET+(i<<3), alloc[i]);
           }
-        axi_write(TPLR_OFFSET,length);
+        eth_write(TPLR_OFFSET,length);
         txtail = (txtail + 1) % queuelen;
       }
     if (rxhead != rxtail)
       {
 	int i, bad = 0;
-        uint32_t *alloc = rxbuf[rxtail].alloc;
+        uint32_t *alloc32 = (uint32_t *)(rxbuf[rxtail].alloc); // legacy size to avoid tweaking header offset
         int rplr = rxbuf[rxtail].rplr;
         int length, xlength = rplr & RPLR_LENGTH_MASK;
-        int rxheader = alloc[HEADER_OFFSET >> 2];
+        int rxheader = alloc32[HEADER_OFFSET >> 2];
         int proto_type = ntohs(rxheader) & 0xFFFF;
 #ifdef VERBOSE
-        printf("alloc = %x\n", alloc);
-        printf("rxhead = %d, rxtail = %d\n", rxhead, rxtail);
+        mini_printf("alloc = %x\n", alloc);
+        mini_printf("rxhead = %d, rxtail = %d\n", rxhead, rxtail);
 #endif
         if (rxbuf[rxtail].fcs != 0xc704dd7b)
-          printf("RX FCS = %x\n", rxbuf[rxtail].fcs);
+          mini_printf("RX FCS = %x\n", rxbuf[rxtail].fcs);
         switch (proto_type)
           {
           case ETH_P_IP:
@@ -459,12 +459,12 @@ int eth_main(void) {
                 uint16_t ipchksum;
                 uip_ipaddr_t srcipaddr, destipaddr;
                 uint8_t body[];
-              } *BUF = ((struct ethip_hdr *)alloc);
+              } *BUF = ((struct ethip_hdr *)alloc32);
               uip_ipaddr_t addr = BUF->srcipaddr;
 #ifdef VERBOSE
-              printf("proto = IP\n");
-              printf("Source IP Address:  %d.%d.%d.%d\n", uip_ipaddr_to_quad(&(BUF->srcipaddr)));
-              printf("Destination IP Address:  %d.%d.%d.%d\n", uip_ipaddr_to_quad(&(BUF->destipaddr)));
+              mini_printf("proto = IP\n");
+              mini_printf("Source IP Address:  %d.%d.%d.%d\n", uip_ipaddr_to_quad(&(BUF->srcipaddr)));
+              mini_printf("Destination IP Address:  %d.%d.%d.%d\n", uip_ipaddr_to_quad(&(BUF->destipaddr)));
 #endif
               switch (BUF->proto)
                 {
@@ -481,7 +481,7 @@ int eth_main(void) {
                       uint8_t body[];
                     } *icmp_hdr = (struct icmphdr *)&(BUF->body);
 #ifdef VERBOSE
-                  printf("IP proto = ICMP\n");
+                  mini_printf("IP proto = ICMP\n");
 #endif
                   if (uip_ipaddr_cmp(&BUF->destipaddr, &uip_hostaddr))
                     {
@@ -499,18 +499,18 @@ int eth_main(void) {
                       chksum = csum((uint8_t *)icmp_hdr, len);
                       icmp_hdr->checksum = htons(chksum);
 #ifdef VERBOSE                      
-                      printf("sending ICMP reply (header = %d, total = %d, checksum = %x)\n", hlen, len, chksum);
+                      mini_printf("sending ICMP reply (header = %d, total = %d, checksum = %x)\n", hlen, len, chksum);
                       PrintData((u_char *)icmp_hdr, len);
 #endif                      
-                      lite_queue(alloc, xlength+4);
+                      lite_queue(alloc32, xlength+4);
                     }
                   }
                   break;
-                case    IPPROTO_IGMP: printf("IP Proto = IGMP\n"); break;
-                case    IPPROTO_IPIP: printf("IP Proto = IPIP\n"); break;
-                case    IPPROTO_TCP: printf("IP Proto = TCP\n"); break;
-                case    IPPROTO_EGP: printf("IP Proto = EGP\n"); break;
-                case    IPPROTO_PUP: printf("IP Proto = PUP\n"); break;
+                case    IPPROTO_IGMP: mini_printf("IP Proto = IGMP\n"); break;
+                case    IPPROTO_IPIP: mini_printf("IP Proto = IPIP\n"); break;
+                case    IPPROTO_TCP: mini_printf("IP Proto = TCP\n"); break;
+                case    IPPROTO_EGP: mini_printf("IP Proto = EGP\n"); break;
+                case    IPPROTO_PUP: mini_printf("IP Proto = PUP\n"); break;
                 case    IPPROTO_UDP:
                   {
                     struct udphdr {
@@ -530,7 +530,7 @@ int eth_main(void) {
                         if (memcmp(peer_addr, BUF->ethhdr.src.addr, 6))
                           {
                             memcpy(peer_addr, BUF->ethhdr.src.addr, 6);
-                            printf("Peer MAC address = %02x:%02x:%02x:%02x:%02x:%02x.\n",
+                            mini_printf("Peer MAC address = %02x:%02x:%02x:%02x:%02x:%02x.\n",
                                    peer_addr[0],
                                    peer_addr[1],
                                    peer_addr[2],
@@ -543,42 +543,42 @@ int eth_main(void) {
                         break;
                       default:
 #ifdef VERBOSE                      
-                        printf("IP Proto = UDP, source port = %d, dest port = %d, length = %d\n",
+                        mini_printf("IP Proto = UDP, source port = %d, dest port = %d, length = %d\n",
                            ntohs(udp_hdr->uh_sport),
                            dport,
                            ulen);
 #else
-			printf("?");
+			mini_printf("?");
 #endif                      
                         break;
                       }
                   }
                   break;
-                case    IPPROTO_IDP: printf("IP Proto = IDP\n"); break;
-                case    IPPROTO_TP: printf("IP Proto = TP\n"); break;
-                case    IPPROTO_DCCP: printf("IP Proto = DCCP\n"); break;
+                case    IPPROTO_IDP: mini_printf("IP Proto = IDP\n"); break;
+                case    IPPROTO_TP: mini_printf("IP Proto = TP\n"); break;
+                case    IPPROTO_DCCP: mini_printf("IP Proto = DCCP\n"); break;
                 case    IPPROTO_IPV6:
 #ifdef VERBOSE                      
-		  printf("IP Proto = IPV6\n");
+		  mini_printf("IP Proto = IPV6\n");
 #else
-		  printf("6");
+		  mini_printf("6");
 #endif                      
 		  break;
-                case    IPPROTO_RSVP: printf("IP Proto = RSVP\n"); break;
-                case    IPPROTO_GRE: printf("IP Proto = GRE\n"); break;
-                case    IPPROTO_ESP: printf("IP Proto = ESP\n"); break;
-                case    IPPROTO_AH: printf("IP Proto = AH\n"); break;
-                case    IPPROTO_MTP: printf("IP Proto = MTP\n"); break;
-                case    IPPROTO_BEETPH: printf("IP Proto = BEETPH\n"); break;
-                case    IPPROTO_ENCAP: printf("IP Proto = ENCAP\n"); break;
-                case    IPPROTO_PIM: printf("IP Proto = PIM\n"); break;
-                case    IPPROTO_COMP: printf("IP Proto = COMP\n"); break;
-                case    IPPROTO_SCTP: printf("IP Proto = SCTP\n"); break;
-                case    IPPROTO_UDPLITE: printf("IP Proto = UDPLITE\n"); break;
-                case    IPPROTO_MPLS: printf("IP Proto = MPLS\n"); break;
-                case    IPPROTO_RAW: printf("IP Proto = RAW\n"); break;
+                case    IPPROTO_RSVP: mini_printf("IP Proto = RSVP\n"); break;
+                case    IPPROTO_GRE: mini_printf("IP Proto = GRE\n"); break;
+                case    IPPROTO_ESP: mini_printf("IP Proto = ESP\n"); break;
+                case    IPPROTO_AH: mini_printf("IP Proto = AH\n"); break;
+                case    IPPROTO_MTP: mini_printf("IP Proto = MTP\n"); break;
+                case    IPPROTO_BEETPH: mini_printf("IP Proto = BEETPH\n"); break;
+                case    IPPROTO_ENCAP: mini_printf("IP Proto = ENCAP\n"); break;
+                case    IPPROTO_PIM: mini_printf("IP Proto = PIM\n"); break;
+                case    IPPROTO_COMP: mini_printf("IP Proto = COMP\n"); break;
+                case    IPPROTO_SCTP: mini_printf("IP Proto = SCTP\n"); break;
+                case    IPPROTO_UDPLITE: mini_printf("IP Proto = UDPLITE\n"); break;
+                case    IPPROTO_MPLS: mini_printf("IP Proto = MPLS\n"); break;
+                case    IPPROTO_RAW: mini_printf("IP Proto = RAW\n"); break;
                 default:
-                  printf("IP proto = unsupported (%x)\n", BUF->proto);
+                  mini_printf("IP proto = unsupported (%x)\n", BUF->proto);
                   break;
                 }
             }
@@ -596,9 +596,9 @@ int eth_main(void) {
                 uip_ipaddr_t sipaddr;
                 struct uip_eth_addr dhwaddr;
                 uip_ipaddr_t dipaddr;
-              } *BUF = ((struct arp_hdr *)alloc);
+              } *BUF = ((struct arp_hdr *)alloc32);
 #ifdef VERBOSE
-             printf("proto = ARP\n");
+             mini_printf("proto = ARP\n");
 #endif
              if(uip_ipaddr_cmp(&BUF->dipaddr, &uip_hostaddr)) {
                 int len = sizeof(struct arp_hdr);
@@ -615,21 +615,21 @@ int eth_main(void) {
                 BUF->ethhdr.type = htons(UIP_ETHTYPE_ARP);
                 
 #ifdef VERBOSE
-                printf("sending ARP reply (length = %d)\n", len);
+                mini_printf("sending ARP reply (length = %d)\n", len);
 #endif
-                lite_queue(alloc, len);
+                lite_queue(alloc32, len);
               }
             }
             break;
           case ETH_P_IPV6:
 #ifdef VERBOSE                      
-            printf("proto_type = IPV6\n");
+            mini_printf("proto_type = IPV6\n");
 #else
-	    printf("6");
+	    mini_printf("6");
 #endif                      
             break;
           default:
-            printf("proto_type = 0x%x\n", proto_type);
+            mini_printf("proto_type = 0x%x\n", proto_type);
             break;
           }
         rxtail = (rxtail + 1) % queuelen;
@@ -641,21 +641,21 @@ void boot(uint8_t *boot_file_buf, uint32_t fsize)
 {
   uint32_t br;
   uint8_t *memory_base = (uint8_t *)(get_ddr_base());
-  printf("Disabling interrupts\n");
+  mini_printf("Disabling interrupts\n");
   write_csr(mie, old_mie);
   write_csr(mstatus, old_mstatus);
   hid_disable_read_irq();
-  axi_write(MACHI_OFFSET, axi_read(MACHI_OFFSET)&~MACHI_IRQ_EN);
-  axi_write(RSR_OFFSET, 0);
-  printf("Ethernet interrupt status = %d\n", axi_read(RSR_OFFSET));
-  printf("Load %d bytes to memory address %x from boot.bin of %d bytes.\n", fsize, boot_file_buf, fsize);
+  eth_write(MACHI_OFFSET, eth_read(MACHI_OFFSET)&~MACHI_IRQ_EN);
+  eth_write(RSR_OFFSET, 0);
+  mini_printf("Ethernet interrupt status = %d\n", eth_read(RSR_OFFSET));
+  mini_printf("Load %d bytes to memory address %x from boot.bin of %d bytes.\n", fsize, boot_file_buf, fsize);
 
   // read elf
-  printf("load elf to DDR memory\n");
+  mini_printf("load elf to DDR memory\n");
   if(br = load_elf(boot_file_buf, fsize))
-    printf("elf read failed with code %0d", br);
+    mini_printf("elf read failed with code %0d", br);
 
-  printf("Boot the loaded program...\n");
+  mini_printf("Boot the loaded program...\n");
 
   uintptr_t mstatus = read_csr(mstatus);
   mstatus = INSERT_FIELD(mstatus, MSTATUS_MPP, PRV_M);
@@ -663,7 +663,7 @@ void boot(uint8_t *boot_file_buf, uint32_t fsize)
   write_csr(mstatus, mstatus);
   write_csr(mepc, memory_base);
 
-  printf("Goodbye, booter ...\n");
+  mini_printf("Goodbye, booter ...\n");
   asm volatile ("mret");
 }
 
@@ -680,13 +680,13 @@ void process_udp_packet(const u_char *data, int ulen)
     {
       memcpy(&idx, data+CHUNK_SIZE, sizeof(uint16_t));
 #ifdef VERBOSE
-      printf("idx = %x\n", idx);  
+      mini_printf("idx = %x\n", idx);  
 #endif
       switch (idx)
         {
         case 0xFFFF:
           {
-            printf("Boot requested\n");
+            mini_printf("Boot requested\n");
             boot(boot_file_buf, maxidx*CHUNK_SIZE);
             break;
           }
@@ -695,20 +695,20 @@ void process_udp_packet(const u_char *data, int ulen)
             oldidx = 0;
             maxidx = 0;
             digest = 0;
-            printf("Clear blocks requested\n");
+            mini_printf("Clear blocks requested\n");
             memset(maskarray, 0, sizeof_maskarray);
             raw_udp_main(maskarray, sizeof_maskarray);
             break;
           }
         case 0xFFFD:
           {
-            printf("Report blocks requested\n");
+            mini_printf("Report blocks requested\n");
             raw_udp_main(maskarray, sizeof_maskarray);
             break;
           }
         case 0xFFFC:
           {
-            printf("Report md5 requested\n");
+            mini_printf("Report md5 requested\n");
             if (!digest)
               digest = hash_buf(boot_file_buf, maxidx*CHUNK_SIZE);
             raw_udp_main(digest, hash_length * 2 + 1);
@@ -726,11 +726,11 @@ void process_udp_packet(const u_char *data, int ulen)
                   maxidx = idx+1;
               }
             else
-              printf("Data Payload index %d out of range\n", idx);
+              mini_printf("Data Payload index %d out of range\n", idx);
 #ifdef VERBOSE
-            printf("Data Payload index %d\n", idx);
+            mini_printf("Data Payload index %d\n", idx);
 #else
-            if (idx % 100 == 0) printf(".");
+            if (idx % 100 == 0) mini_printf(".");
 #endif
             oldidx = idx;
           }
@@ -738,7 +738,7 @@ void process_udp_packet(const u_char *data, int ulen)
     }
   else
     {
-      printf("UDP packet length %d too short for port %d\n", ulen, PORT);
+      mini_printf("UDP packet length %d too short for port %d\n", ulen, PORT);
 #ifdef UDP_DEBUG
       PrintData(data, ulen);
 #endif      
@@ -754,36 +754,36 @@ void PrintData (const u_char * data , int Size)
     {
         if( i!=0 && i%16==0)
         {
-            printf("         ");
+            mini_printf("         ");
             for(j=i-16 ; j<i ; j++)
             {
                 if(data[j]>=32 && data[j]<=128)
-                    printf("%c",(unsigned char)data[j]);
-                else printf(".");
+                    mini_printf("%c",(unsigned char)data[j]);
+                else mini_printf(".");
             }
-            printf("\n");
+            mini_printf("\n");
         }
-        if(i%16==0) printf("   ");
-            printf(" %02X",(unsigned int)data[i]);
+        if(i%16==0) mini_printf("   ");
+            mini_printf(" %02X",(unsigned int)data[i]);
         if( i==Size-1)
         {
             for(j=0;j<15-i%16;j++)
             {
-              printf("   ");
+              mini_printf("   ");
             }
-            printf("         ");
+            mini_printf("         ");
             for(j=i-i%16 ; j<=i ; j++)
             {
                 if(data[j]>=32 && data[j]<=128)
                 {
-                  printf("%c",(unsigned char)data[j]);
+                  mini_printf("%c",(unsigned char)data[j]);
                 }
                 else
                 {
-                  printf(".");
+                  mini_printf(".");
                 }
             }
-            printf("\n" );
+            mini_printf("\n" );
         }
     }
 }
@@ -915,7 +915,6 @@ int main()
 {
   uint32_t macaddr_lo, macaddr_hi;
   int sw = sd_resp(31);
-  eth_base = (volatile unsigned int *)eth;
   loopback_test(8, (sw & 0xF) == 0xF);
   plic = (volatile uint32_t *)intc;
   init_plic();
@@ -931,7 +930,7 @@ int main()
 
   memcpy (&macaddr_lo, mac_addr.addr+2, sizeof(uint32_t));
   memcpy (&macaddr_hi, mac_addr.addr+0, sizeof(uint16_t));
-  axi_write(MACLO_OFFSET, htonl(macaddr_lo));
-  axi_write(MACHI_OFFSET, MACHI_IRQ_EN|htons(macaddr_hi));
+  eth_write(MACLO_OFFSET, htonl(macaddr_lo));
+  eth_write(MACHI_OFFSET, MACHI_IRQ_EN|htons(macaddr_hi));
   eth_main();
 }

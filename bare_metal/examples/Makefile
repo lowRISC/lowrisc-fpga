@@ -19,7 +19,7 @@ DRIVER_DIR = $(BASE_DIR)/../driver
 RISCV_PREFIX=riscv64-unknown-elf-
 RISCV_GCC = $(RISCV_PREFIX)gcc
 RISCV_DUMP = $(RISCV_PREFIX)objdump
-RISCV_GCC_OPTS = -static -std=gnu99 -g -Os -ffast-math -fno-common -fno-builtin-printf -I$(DRIVER_DIR) -I$(BASE_DIR)
+RISCV_GCC_OPTS = -static -std=gnu99 -g -Os -ffast-math -fno-common -fno-builtin-printf -mcmodel=medany -I$(DRIVER_DIR) -I$(BASE_DIR)
 RISCV_DUMP_OPTS = -D -S -l
 RISCV_LINK = $(RISCV_PREFIX)gcc -T $(DRIVER_DIR)/test.ld
 RISCV_LINK_OPTS = -nostdlib -nostartfiles -ffast-math -Xlinker -M=mapfile
