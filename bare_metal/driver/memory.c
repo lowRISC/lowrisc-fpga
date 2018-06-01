@@ -3,11 +3,11 @@
 #include "lowrisc_memory_map.h"
 
 volatile uint64_t * get_bram_base() {
-  return (uint64_t *)bram;
+  return (uint64_t *)bram_base_addr;
 }
 
 volatile uint64_t * get_ddr_base() {
-  return (uint64_t *)(ddr);
+  return (uint64_t *)0x80000000;
 }
 
 volatile uint64_t  get_ddr_size() {
