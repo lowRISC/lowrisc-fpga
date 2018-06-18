@@ -56,6 +56,7 @@ void hid_send_irq(uint8_t data)
 
 void hid_send(uint8_t data)
 {
+  uart_console_putchar(data);
   hid_console_putchar(data);
 }
 

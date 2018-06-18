@@ -245,7 +245,6 @@ static int oldidx;
 static uint16_t peer_port;
 static u_char peer_addr[6];
 static uint64_t maskarray[sizeof_maskarray/sizeof(uint64_t)];
-volatile uint32_t *plic;
 
 void external_interrupt(void)
 {
@@ -296,10 +295,10 @@ static unsigned short csum(uint8_t *buf, int nbytes)
             return (unsigned short)(~sum);
     }
 
-extern size_t eth, intc;
 static uintptr_t old_mstatus, old_mie;
 
 #define rand32() ((unsigned int) rand() | ( (unsigned int) rand() << 16))
+uint64_t rand64(void) { uint64_t low = rand32(), high = rand32(); return low | (high << 32); }
   
 void loopback_test(int loops, int sim)
   {
@@ -307,27 +306,25 @@ void loopback_test(int loops, int sim)
     eth_write(MACHI_OFFSET, MACHI_LOOPBACK_MASK);
     for (j = 1; j <= loops; j++)
       {
-	enum {maxcnt=375};
+	enum {maxcnt=187};
 	int i, waiting, actualwait, match = 0, waitcnt = 0;
-	int tstcnt = 2 << j;
+	int tstcnt = 1 << j;
 	if (tstcnt > maxcnt) tstcnt = maxcnt; /* max length packet */
 	if (!sim) mini_printf("Selftest iteration %d\n", j);
       /* bit-level digital loopback */
       eth_write(RSR_OFFSET, 0); /* clear pending receive packet, if any */
       /* random inits */
-      if (!sim) for (i = 0; i < tstcnt*4; i += 4)
+        if (!sim) for (i = 0; i < tstcnt*8; i += 8)
 	{
-	eth_write(TXBUFF_OFFSET+i, rand32());
+        eth_write(TXBUFF_OFFSET+i, rand64());
 	eth_write(RXBUFF_OFFSET+i, i);
 	//	eth_write(AXISBUFF_OFFSET+i, i);
 	}
       /* systematic inits */
-      eth_write(TXBUFF_OFFSET, 0xFFFFFFFF);
-      eth_write(TXBUFF_OFFSET+4, 0xFFFFFFFF);
-      eth_write(TXBUFF_OFFSET+8, 0xDEADBEEF);
-      eth_write(TXBUFF_OFFSET+12, 0x55555555);
+      eth_write(TXBUFF_OFFSET, 0xFFFFFFFFFFFFFFFF);
+      eth_write(TXBUFF_OFFSET+8, 0x55555555DEADBEEF);
       /* launch the packet */
-      eth_write(TPLR_OFFSET,tstcnt*4);
+      eth_write(TPLR_OFFSET, tstcnt*8);
       /* wait for loopback to do its work */
       do 
 	{
@@ -337,14 +334,15 @@ void loopback_test(int loops, int sim)
       while ((waitcnt++ < tstcnt) || waiting);
       for (i = 0; i < tstcnt; i++)
 	{
-	  uint32_t xmit_rslt = eth_read(TXBUFF_OFFSET+(i<<2));
-	  uint32_t axis_rslt = eth_read(RXBUFF_OFFSET+(i<<2));
+          uint64_t xmit_rslt = eth_read(TXBUFF_OFFSET+(i<<3));
+          uint64_t axis_rslt = eth_read(RXBUFF_OFFSET+(i<<3));
 	  if (xmit_rslt != axis_rslt)
 	    {
 	      if (sim)
-	      eth_write(MACHI_OFFSET, MACHI_LOOPBACK_MASK|MACHI_COOKED_MASK);
+	      eth_write(MACHI_OFFSET, MACHI_LOOPBACK_MASK);
 	      else
-	      mini_printf("Buffer offset %d: xmit=%x, axis=%x\n", i, xmit_rslt, axis_rslt);
+                  if (i < 10)
+                    mini_printf("Buffer offset %d: xmit=%lx, axis=%lx\n", i, xmit_rslt, axis_rslt);
 	    }
 	  else
 	    ++match;
@@ -916,7 +914,6 @@ int main()
   uint32_t macaddr_lo, macaddr_hi;
   int sw = sd_resp(31);
   loopback_test(8, (sw & 0xF) == 0xF);
-  plic = (volatile uint32_t *)intc;
   init_plic();
   board_mmc_power_init();  
 

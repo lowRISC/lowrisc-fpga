@@ -11,6 +11,7 @@
 #include "memory.h"
 #include "bits.h"
 #include "hid.h"
+#include "lowrisc_memory_map.h"
 
 #define SYS_write 64
 #define SYS_exit 93

@@ -14,6 +14,8 @@ extern volatile uint64_t * get_ddr_base();
 extern volatile uint64_t   get_ddr_size();
 extern volatile uint64_t * get_flash_base();
 
+extern volatile uint32_t *const plic;
+
 enum { clint_base_addr = 0x02000000,
 	plic_base_addr = 0x0c000000,
 	bram_base_addr = 0x40000000,
@@ -23,6 +25,7 @@ enum { clint_base_addr = 0x02000000,
         keyb_base_addr = 0x40030000, // These have been relocated
         uart_base_addr = 0x40034000,
          vga_base_addr = 0x40038000,
+        ddr_base_addr  = 0x80000000
       };
 
 #endif
