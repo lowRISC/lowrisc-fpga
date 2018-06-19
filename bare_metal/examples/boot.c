@@ -8,7 +8,7 @@
 #include "hid.h"
 #include "elf.h"
 #include "mini-printf.h"
-#include "memory.h"
+#include "lowrisc_memory_map.h"
 
 FATFS FatFs;   // Work area (file system object) for logical drive
 

@@ -46,9 +46,6 @@ outqueue_t *txbuf;
 //#define VERBOSE
 #define UDP_DEBUG
 
-// LowRISC Ethernet base address
-static volatile uint64_t *const eth_base = (volatile uint64_t *)eth_base_addr;
-
 static void eth_write(size_t addr, uint64_t data)
 {
   if ((addr < 0x4000) && !(addr&7))

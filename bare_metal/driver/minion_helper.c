@@ -10,7 +10,7 @@
 #include <string.h>
 #include "hid.h"
 #include "errno.h"
-#include "memory.h"
+#include "lowrisc_memory_map.h"
 #include "minion_lib.h"
 #include "mini-printf.h"
 #include "sdhci-minion-hash-md5.h"
@@ -173,8 +173,6 @@ void log_printf(const char *fmt, ...);
 void hid_write(volatile uint32_t * const sd_ptr, uint32_t val);
 int cli_readline_into_buffer(const char *const prompt, char *buffer, int timeout);
 
-extern volatile uint32_t *sd_base;
-
 void myputchar(char ch);
 void myputs(const char *str);
 int sdhci_write(u8 *buf, uint32_t val, int reg);
@@ -182,13 +180,6 @@ uint32_t sdhci_read(int reg);
 void sdhci_reset(struct bootstrap_host *host, uint8_t mask);
 
 void minion_dispatch(const char *ucmd);
-
-/* minion address space pointers */
-#ifdef HID_BASE
-volatile uint32_t *sd_base = (uint32_t *)(HID_BASE + 0x00010000);
-#else
-volatile uint32_t *sd_base = 0;
-#endif
 
 void write_led(uint32_t data)
 {
@@ -282,7 +273,8 @@ void _get_card_status(int line, int verbose)
 {
   int i;
   static uint32_t old_card_status[32];
-  memcpy(card_status, (const void *)sd_base, sizeof(card_status));
+  for (i = 0; i < sizeof(card_status)/sizeof(*card_status); i++)
+    card_status[i] = sd_base[i];
 #ifdef SDHCI_VERBOSE3
   for (i = 0; i < 26; i++) if (verbose || (card_status[i] != old_card_status[i]))
       {
@@ -348,7 +340,7 @@ static void minion_sdhci_read_block_pio(u8 *buf)
 	  
 	  while (len) {
 	    if (chunk == 0) {
-	      scratch =  __be32_to_cpu(sd_base[0x2000+i++]);
+	      scratch =  __be32_to_cpu(sd_bram[i++]);
 	      chunk = 4;
 	    }
 	    
@@ -402,7 +394,7 @@ static void minion_sdhci_write_block_pio(u8 *buf)
 			len--;
 
 			if ((chunk == 4) || ((len == 0) && (blksize == 0))) {
-				sd_base[0x2000 + i++] = scratch;
+				sd_bram[i++] = scratch;
 				chunk = 0;
 				scratch = 0;
 			}
@@ -491,7 +483,7 @@ int sd_transaction_finish2(void *buf)
 {	
   static int good, bad;	   
   uint32_t timeout, stat, wait, timedout, rslt = 0;
-  int retry = 0;
+  int i, retry = 0;
   sd_align(0);
   if ((sdhci_command & SDHCI_CMD_DATA) && !(sdhci_transfer_mode & SDHCI_TRNS_READ))
         {
@@ -509,7 +501,6 @@ int sd_transaction_finish2(void *buf)
   while ((wait != 0x100) && (card_status[4] < card_status[25]) && (timeout++ < 1000000));
 #ifdef SDHCI_VERBOSE2
   {
-  int i;
   printf("%4x:%8x->", card_status[7], card_status[6]);
   for (i = 4; i--; )
     {
@@ -518,7 +509,8 @@ int sd_transaction_finish2(void *buf)
   printf("%8x,%8x\n", card_status[5], card_status[4]);
   }
 #endif
-  memcpy(card_status, (const void *)sd_base, sizeof(card_status));
+  for (i = 0; i < sizeof(card_status)/sizeof(*card_status); i++)
+    card_status[i] = sd_base[i];
   if (card_status[4] >= card_status[25])
     {
       printf("cmd timeout\n");
@@ -834,11 +826,11 @@ int sd_read_sector1(int sect, void *buf, int max)
   printf("sd_read_sector1(%d)\n", sect);
   for (i = 0; i < 512; i++)
     {
-      sd_base[0x2000 + i ] = 0xDEADBEEF + i;
+      sd_bram[ i ] = 0xDEADBEEF + i;
     }
   for (i = 0; i < 512; i++)
     {
-      rslt |= (sd_base[0x2000 + i ] != 0xDEADBEEF + i);
+      rslt |= (sd_bram[ i ] != 0xDEADBEEF + i);
     }
   if (rslt)
     {

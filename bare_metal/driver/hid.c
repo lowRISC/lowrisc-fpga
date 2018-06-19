@@ -3,8 +3,6 @@
 #include "hid.h"
 #include "lowrisc_memory_map.h"
 
-volatile uint64_t *const uart_base = (uint64_t *)uart_base_addr;
-volatile uint8_t *const hid_vga_ptr = (uint8_t *)vga_base_addr;
 static int addr_int = 0;
 
 void hid_console_putchar(unsigned char ch)

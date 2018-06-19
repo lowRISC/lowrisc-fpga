@@ -80,8 +80,6 @@ void log_printf(const char *fmt, ...);
 void uart_write(volatile unsigned int * const sd_ptr, unsigned val);
 int cli_readline_into_buffer(const char *const prompt, char *buffer, int timeout);
 
-extern volatile unsigned int *sd_base;
-
   int edcl_main(void);
   void edcl_loadelf(const char *elf);
   void edcl_close(void);
