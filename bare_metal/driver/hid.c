@@ -33,10 +33,6 @@ void hid_console_putchar(unsigned char ch)
 
 void uart_console_putchar(unsigned char ch)
 {
-  static int first = 0;
-  if (!first)
-    uart_base[0x400] = 54; // was 217;
-  first = 1;
   while (uart_base[0] & 0x400)
     ;
   uart_base[0] = ch;
