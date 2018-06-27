@@ -168,23 +168,6 @@ void process_udp_packet(const u_char * , int);
 void PrintData (const u_char * , int);
 int raw_udp_main(void *, int);
 
-uint16_t __bswap_16(uint16_t x)
-{
-	return ((x << 8) & 0xff00) | ((x >> 8) & 0x00ff);
-}
-
-uint32_t __bswap_32(uint32_t x)
-{
-  return
-     ((((x) & 0xff000000) >> 24) | (((x) & 0x00ff0000) >>  8) |		      \
-      (((x) & 0x0000ff00) <<  8) | (((x) & 0x000000ff) << 24)) ;
-}
-
-#   define ntohl(x)     __bswap_32 (x)
-#   define ntohs(x)     __bswap_16 (x)
-#   define htonl(x)     __bswap_32 (x)
-#   define htons(x)     __bswap_16 (x)
-
 #define min(x,y) (x) < (y) ? (x) : (y)
 
 int eth_discard = 0;

@@ -44,4 +44,3 @@ STRCMP (const char *p1, const char *p2)
 
   return c1 - c2;
 }
-libc_hidden_builtin_def (strcmp)

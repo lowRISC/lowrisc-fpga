@@ -52,9 +52,9 @@
  * MODIFICATIONS.
  *----------------------------------------------------------------------------*/
 
-#include <elf.h>
+#include "elfriscv.h"
 #include <string.h>
-#include <stdio.h>
+// #include <stdio.h>
 #include "mini-printf.h"
 #include "sdhci-minion-hash-md5.h"
 
@@ -91,10 +91,10 @@ int load_elf(const uint8_t *elf, const uint32_t elf_size) {
 	size_t extent = ph[i].p_offset + len;
         if(elf_size < extent)
 	  {
-	    printf("len required = %lX, actual = %x\n", extent, elf_size);
+	    printf("len required = %X, actual = %x\n", extent, elf_size);
 	    return 3;             /* internal damaged */
 	  }
-	printf("memcpy(%p,0x%p,0x%lx);\n", paddr, elf_offset, len);
+	printf("memcpy(%x,0x%x,0x%x);\n", paddr, elf_offset, len);
         memcpy(paddr, elf_offset, len);
 #ifdef VERBOSE_MD5
         hash_buf(paddr, len);
@@ -103,7 +103,7 @@ int load_elf(const uint8_t *elf, const uint32_t elf_size) {
       if(ph[i].p_memsz > ph[i].p_filesz) { /* zero padding */
 	uint8_t *bss = (uint8_t *)ph[i].p_paddr + ph[i].p_filesz;
 	size_t len = ph[i].p_memsz - ph[i].p_filesz;
-	printf("memset(%p,0,0x%lx);\n", bss, len);
+	printf("memset(%x,0,0x%x);\n", bss, len);
         memset(bss, 0, len);
 #ifdef VERBOSE_MD5
 	hash_buf(bss, len);

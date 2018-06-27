@@ -1,7 +1,7 @@
 #if 0
 #define SDHCI_VERBOSE
-#define SDHCI_VERBOSE2
 #define SDHCI_VERBOSE3
+#define SDHCI_VERBOSE2
 #endif
 #include <stdio.h>
 #include <stdint.h>
@@ -224,7 +224,13 @@ void sd_cmd_start(int sd_cmd)
 
 void sd_reset(int sd_rst, int clk_rst, int data_rst, int cmd_rst)
 {
+  volatile int i = -1;
+  static int old_sd_rst;
   sd_base[6] = ((sd_rst&1) << 3)|((clk_rst&1) << 2)|((data_rst&1) << 1)|((cmd_rst&1) << 0);
+  if (old_sd_rst != sd_rst)
+    for (i = 1000000; i; i--)
+      ;
+  old_sd_rst = sd_rst;
 }
 
 void sd_blkcnt(int d_blkcnt)
@@ -288,6 +294,7 @@ void board_mmc_power_init(void)
 {
   sd_clk_div(0x20);
   sd_reset(1,1,0,0);
+
   get_card_status(0);
   sd_blkcnt(1);
   sd_blksize(1);
@@ -297,6 +304,7 @@ void board_mmc_power_init(void)
   sd_timeout(500000);
   get_card_status(0);
   sd_reset(0,1,1,1);
+
   get_card_status(10);
 }
 
@@ -316,48 +324,16 @@ int sd_read_sector(int sect, void *buf, int max)
 
 static void minion_sdhci_read_block_pio(u8 *buf)
 {
-	unsigned long flags;
-	size_t blksize, len, chunk;
-	u32 uninitialized_var(scratch);
-	int i = 0;
-#ifdef SDHCI_MD5
-	md5_ctx_t context;
-#endif
+  enum {blksize=512};
+  int i = 0;
 #ifdef SDHCI_VERBOSE3
 	printf("Sector reading\n");
 #endif
-	blksize = 512;
-	chunk = 0;
-
-#ifdef SDHCI_MD5
-	md5_begin(&context);
-#endif	
-	while (blksize) {
-	  int idx = 0;
-	  len = blksize;
-	  
-	  blksize -= len;
-	  
-	  while (len) {
-	    if (chunk == 0) {
-	      scratch =  __be32_to_cpu(sd_bram[i++]);
-	      chunk = 4;
-	    }
-	    
-	    buf[idx] = scratch & 0xFF;	    
-	    idx++;
-	    scratch >>= 8;
-	    chunk--;
-	    len--;
-	  }
-#ifdef SDHCI_MD5
-	  md5_hash(&context, buf, idx);
-#endif	  
-	}
-#ifdef SDHCI_MD5	
-	md5_end(&context);
-	printf("arg=%x, md5 = %s\n", sdhci_argument, hash_bin_to_hex(&context));
-#endif	
+        while (i < blksize/sizeof(u64)) {
+          u64 scratch = sd_bram[i++];
+          memcpy(buf, &scratch, sizeof(u64));
+          buf += sizeof(u64);
+        }
 #ifdef SDHCI_VERBOSE4	
 	      {
 		int i;
@@ -373,33 +349,16 @@ static void minion_sdhci_read_block_pio(u8 *buf)
 
 static void minion_sdhci_write_block_pio(u8 *buf)
 {
-	unsigned long flags;
-	size_t blksize, len, chunk;
-	u32 scratch, i = 0;	
-
-	blksize = 512;
-	chunk = 0;
-	scratch = 0;
-
-	while (blksize) {
-		len = blksize;
-
-		blksize -= len;
-
-		while (len) {
-			scratch |= (u32)*buf << (chunk * 8);
-
-			buf++;
-			chunk++;
-			len--;
-
-			if ((chunk == 4) || ((len == 0) && (blksize == 0))) {
-				sd_bram[i++] = scratch;
-				chunk = 0;
-				scratch = 0;
-			}
-		}
-	}
+  enum {blksize=512}; 
+  int i = 0;	
+    
+  while (i < blksize/sizeof(u64))
+    {
+      u64 scratch;
+      memcpy(&scratch, buf, sizeof(u64));
+      buf += sizeof(u64);
+      sd_bram[i++] = scratch;
+    }
 
 }
 
@@ -563,12 +522,7 @@ int sd_transaction_finish2(void *buf)
   return rslt;
 }
 
-void sdhci_minion_hw_reset(void)
-{
-  printf("sdhci_minion_hw_reset();\n");
-}
-
-#ifdef SDHCI_VERBOSE
+#if defined(SDHCI_VERBOSE) || defined(SDHCI_VERBOSE2)
 
 const char *sdhci_kind(int reg)
 {  
@@ -649,7 +603,6 @@ int sdhci_write(u8 *buf, uint32_t val, int reg)
     case SDHCI_POWER_CONTROL	:
       if (val & SDHCI_POWER_ON)
 	{
-	  sdhci_minion_hw_reset();
 	  sd_reset(0,1,0,0);
 	  get_card_status(0);
 	  sd_align(0);
@@ -684,7 +637,7 @@ int sdhci_write(u8 *buf, uint32_t val, int reg)
     case SDHCI_SOFTWARE_RESET	:
       sdhci_software_reset = val;
       sdhci_transfer_mode = 0;
-      if (val & SDHCI_RESET_ALL) sdhci_minion_hw_reset();
+      if (val & SDHCI_RESET_ALL) board_mmc_power_init();
       get_card_status(0);      
       break;
     case SDHCI_CLOCK_CONTROL	:
@@ -912,6 +865,9 @@ sdhci_write(buf, 0x00000001, SDHCI_INT_STATUS);
  sdhci_int_status = sdhci_read(SDHCI_INT_STATUS);
 sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
 do {
+   volatile int i = 100000;
+   while (i--)
+     ;
    sdhci_write(buf, 0xFFFFFFFF, SDHCI_INT_STATUS);
    sdhci_present_state = sdhci_read(SDHCI_PRESENT_STATE);
    sdhci_write(buf, 0x00000000, SDHCI_ARGUMENT);

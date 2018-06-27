@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdarg.h>
-#include <stdio.h>
+//#include <stdio.h>
 #include <limits.h>
 
 #include "mini-printf.h"
@@ -12,6 +12,7 @@
 #include "bits.h"
 #include "hid.h"
 #include "lowrisc_memory_map.h"
+#include "eth.h"
 
 #define SYS_write 64
 #define SYS_exit 93
@@ -85,9 +86,9 @@ void handle_interrupt(long cause)
     case IRQ_S_TIMER  : strcpy(code, "IRQ_S_TIMER  "); break;
     case IRQ_H_TIMER  : strcpy(code, "IRQ_H_TIMER  "); break;
     case IRQ_M_TIMER  : strcpy(code, "IRQ_M_TIMER  "); break;
-    case IRQ_S_DEV    : strcpy(code, "IRQ_S_DEV    "); break;
-    case IRQ_H_DEV    : strcpy(code, "IRQ_H_DEV    "); break;
-    case IRQ_M_DEV    : strcpy(code, "IRQ_M_DEV    "); break;
+    case IRQ_S_EXT    : strcpy(code, "IRQ_S_EXT    "); break;
+    case IRQ_H_EXT    : strcpy(code, "IRQ_H_EXT    "); break;
+    case IRQ_M_EXT    : strcpy(code, "IRQ_M_EXT    "); break;
     case IRQ_COP      : strcpy(code, "IRQ_COP      "); break;
     case IRQ_HOST     : strcpy(code, "IRQ_HOST     "); break;
     default           : snprintf(code, sizeof(code), "IRQ_%x     ", cause);
@@ -97,7 +98,7 @@ void handle_interrupt(long cause)
  snprintf(code, sizeof(code), "mip=%x\n", mip);
  hid_send_string(code);
 #endif
- if (cause==IRQ_M_DEV)
+ if (cause==IRQ_M_EXT)
    external_interrupt();  
 }
 
@@ -193,8 +194,23 @@ static void init_tls()
 
 size_t err = 0, eth = 0, ddr = 0, rom = 0, bram = 0, intc = 0, clin = 0, hid = 0;
 
+uint16_t __bswap_16(uint16_t x)
+{
+	return ((x << 8) & 0xff00) | ((x >> 8) & 0x00ff);
+}
+
+uint32_t __bswap_32(uint32_t x)
+{
+  return
+     ((((x) & 0xff000000) >> 24) | (((x) & 0x00ff0000) >>  8) |		      \
+      (((x) & 0x0000ff00) <<  8) | (((x) & 0x000000ff) << 24)) ;
+}
+
 void _init(int cid, int nc)
 {
+  int sw;
+  uip_eth_addr mac_addr;
+  uint32_t macaddr_lo, macaddr_hi;
   extern int main(int, char **);
   extern char _bss[], _end[];
   size_t unknown = 0;
@@ -205,6 +221,18 @@ void _init(int cid, int nc)
   init_tls();
   thread_entry(cid, nc);
   */
+  sw = sd_base[31];
+  mac_addr.addr[0] = (uint8_t)0xEE;
+  mac_addr.addr[1] = (uint8_t)0xE1;
+  mac_addr.addr[2] = (uint8_t)0xE2;
+  mac_addr.addr[3] = (uint8_t)0xE3;
+  mac_addr.addr[4] = (uint8_t)0xE4;
+  mac_addr.addr[5] = (uint8_t)(0xE0|(sw >> 12));
+
+  memcpy (&macaddr_lo, mac_addr.addr+2, sizeof(uint32_t));
+  memcpy (&macaddr_hi, mac_addr.addr+0, sizeof(uint16_t));
+  eth_base[MACLO_OFFSET>>3] = __bswap_32(macaddr_lo);
+  eth_base[MACHI_OFFSET>>3] = __bswap_16(macaddr_hi);
 
   // only single-threaded programs should ever get here.
   int ret = main(0, 0);
@@ -217,7 +245,7 @@ void _init(int cid, int nc)
   if (pbuf != buf)
     hid_send_string(buf);
 
-  mini_printf("normal exit reached, code=%d\n", ret);
+  printf("normal exit reached, code=%d\n", ret);
   for(;;);
 }
 

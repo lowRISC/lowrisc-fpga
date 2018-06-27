@@ -37,18 +37,13 @@ extern "C" {
 
 #include <stdarg.h>
 
-int mini_vsnprintf(char* buffer, unsigned int buffer_len, const char *fmt, va_list va);
-int mini_snprintf(char* buffer, unsigned int buffer_len, const char *fmt, ...);
-int mini_sprintf(char* buffer, const char *fmt, ...);
-int mini_printf (const char *fmt, ...);
+int vsnprintf(char* buffer, size_t buffer_len, const char *fmt, va_list va);
+int snprintf(char* buffer, size_t buffer_len, const char *fmt, ...);
+int sprintf(char* buffer, const char *fmt, ...);
+int printf (const char *fmt, ...);
 
 #ifdef __cplusplus
 }
 #endif
-
-#define vsnprintf mini_vsnprintf
-#define snprintf mini_snprintf
-#define sprintf mini_sprintf
-#define printf mini_printf
 
 #endif

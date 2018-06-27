@@ -30,14 +30,14 @@
  *
  * This is a minimal snprintf() implementation optimised
  * for embedded systems with a very limited program memory.
- * mini_snprintf() doesn't support _all_ the formatting
+ * snprintf() doesn't support _all_ the formatting
  * the glibc does but on the other hand is a lot smaller.
  * Here are some numbers from my STM32 project (.bin file size):
  *      no snprintf():      10768 bytes
  *      mini snprintf():    11420 bytes     (+  652 bytes)
  *      glibc snprintf():   34860 bytes     (+24092 bytes)
  * Wasting nearly 24kB of memory just for snprintf() on
- * a chip with 32kB flash is crazy. Use mini_snprintf() instead.
+ * a chip with 32kB flash is crazy. Use snprintf() instead.
  *
  */
 
@@ -47,15 +47,7 @@
 #include "hid.h"
 
 static unsigned int
-mini_strlen(const char *s)
-{
-	unsigned int len = 0;
-	while (s[len] != '\0') len++;
-	return len;
-}
-
-static unsigned int
-mini_itoa(int value, unsigned int radix, unsigned int uppercase, unsigned int unsig,
+itoa(int value, unsigned int radix, unsigned int uppercase, unsigned int unsig,
 	 char *buffer, unsigned int zero_pad)
 {
 	char	*pbuffer = buffer;
@@ -99,7 +91,7 @@ mini_itoa(int value, unsigned int radix, unsigned int uppercase, unsigned int un
 }
 
 int
-mini_vsnprintf(char *buffer, unsigned int buffer_len, const char *fmt, va_list va)
+vsnprintf(char *buffer, size_t buffer_len, const char *fmt, va_list va)
 {
 	char *pbuffer = buffer;
 	char bf[24];
@@ -157,13 +149,13 @@ mini_vsnprintf(char *buffer, unsigned int buffer_len, const char *fmt, va_list v
 
 				case 'u':
 				case 'd':
-					len = mini_itoa(va_arg(va, unsigned int), 10, 0, (ch=='u'), bf, zero_pad);
+					len = itoa(va_arg(va, unsigned int), 10, 0, (ch=='u'), bf, zero_pad);
 					_puts(bf, len);
 					break;
 
 				case 'x':
 				case 'X':
-					len = mini_itoa(va_arg(va, unsigned int), 16, (ch=='X'), 1, bf, zero_pad);
+					len = itoa(va_arg(va, unsigned int), 16, (ch=='X'), 1, bf, zero_pad);
 					_puts(bf, len);
 					break;
 
@@ -173,7 +165,7 @@ mini_vsnprintf(char *buffer, unsigned int buffer_len, const char *fmt, va_list v
 
 				case 's' :
 					ptr = va_arg(va, char*);
-					_puts(ptr, mini_strlen(ptr));
+					_puts(ptr, strlen(ptr));
 					break;
 
 				default:
@@ -187,25 +179,35 @@ end:
 }
 
 
-int
-mini_snprintf(char* buffer, unsigned int buffer_len, const char *fmt, ...)
+int snprintf(char* buffer, size_t buffer_len, const char *fmt, ...)
 {
 	int ret;
 	va_list va;
 	va_start(va, fmt);
-	ret = mini_vsnprintf(buffer, buffer_len, fmt, va);
+	ret = vsnprintf(buffer, buffer_len, fmt, va);
 	va_end(va);
 
 	return ret;
 }
 
-int mini_printf (const char *fmt, ...)
+int sprintf(char* buffer, const char *fmt, ...)
+{
+	int ret;
+	va_list va;
+	va_start(va, fmt);
+	ret = vsnprintf(buffer, 256, fmt, va);
+	va_end(va);
+
+	return ret;
+}
+
+int printf (const char *fmt, ...)
 {
   char buffer[99];
   va_list va;
   int rslt;
   va_start(va, fmt);
-  rslt = mini_vsnprintf(buffer, sizeof(buffer), fmt, va);
+  rslt = vsnprintf(buffer, sizeof(buffer), fmt, va);
   va_end(va);
   hid_send_string(buffer);
   return rslt;

@@ -6,7 +6,6 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdarg.h>
-#include <stdio.h>
 #include <limits.h>
 
 extern volatile uint64_t * get_bram_base();
@@ -16,7 +15,7 @@ extern volatile uint64_t * get_flash_base();
 
 extern volatile uint32_t *const plic;
 extern volatile uint64_t *const sd_base;
-extern volatile uint32_t *const sd_bram;
+extern volatile uint64_t *const sd_bram;
 extern volatile uint8_t *const hid_vga_ptr;
 extern volatile uint64_t *const uart_base;
 extern volatile uint64_t *const eth_base;

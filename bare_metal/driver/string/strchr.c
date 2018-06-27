@@ -177,9 +177,3 @@ STRCHR (const char *s, int c_in)
 
   return NULL;
 }
-
-#ifdef weak_alias
-# undef index
-weak_alias (strchr, index)
-#endif
-libc_hidden_builtin_def (strchr)

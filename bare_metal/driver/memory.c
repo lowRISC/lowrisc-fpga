@@ -11,7 +11,7 @@ volatile uint64_t *const eth_base = (volatile uint64_t *)eth_base_addr;
 // LowRISC SD-card base address
 volatile uint64_t *const sd_base = (volatile uint64_t *)sd_base_addr;
 // LowRISC SD-card buffer RAM address
-volatile uint32_t *const sd_bram = (volatile uint32_t *)sd_bram_addr;
+volatile uint64_t *const sd_bram = (volatile uint64_t *)sd_bram_addr;
 // Rocket PLIC base address
 volatile uint32_t *const plic = (volatile uint32_t *)plic_base_addr;
 

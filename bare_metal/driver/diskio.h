@@ -83,7 +83,7 @@ extern "C" {
   DRESULT disk_ioctl (uint8_t pdrv, uint8_t cmd, void* buff);
 #endif
   void disk_timerproc (void);
-
+  void read_block(void *dst, int sect);
 
   /* Disk Status Bits (DSTATUS) */
 #define STA_NOINIT      0x01    /* Drive not initialized */

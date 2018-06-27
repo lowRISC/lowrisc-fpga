@@ -88,3 +88,14 @@ void hid_enable_read_irq() {
 void hid_disable_read_irq() {
 
 }
+
+#undef putc
+int putc(int c, __FILE *ptr) {
+  hid_send(c);
+}
+
+int puts(const char *str) {
+  while (*str) hid_send(*str++);
+  hid_send('\n');
+  return 0;
+}
