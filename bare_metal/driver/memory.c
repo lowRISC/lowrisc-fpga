@@ -5,7 +5,7 @@
 // LowRISC simple UART base address
 volatile uint64_t *const uart_base = (uint64_t *)uart_base_addr;
 // LowRISC VGA-compatible display base address
-volatile uint8_t *const hid_vga_ptr = (uint8_t *)vga_base_addr;
+volatile uint16_t *const hid_vga_ptr = (uint16_t *)vga_base_addr;
 // LowRISC Ethernet base address
 volatile uint64_t *const eth_base = (volatile uint64_t *)eth_base_addr;
 // LowRISC SD-card base address

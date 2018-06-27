@@ -7,17 +7,17 @@ static int addr_int = 0;
 
 void hid_console_putchar(unsigned char ch)
 {
-  int lmt;
+  int lmt, blank = ' '|0xF00;
   switch(ch)
     {
-    case 8: case 127: if (addr_int & 127) hid_vga_ptr[--addr_int] = ' '; break;
+    case 8: case 127: if (addr_int & 127) hid_vga_ptr[--addr_int] = blank; break;
     case 13: addr_int = addr_int & -128; break;
     case 10:
       {
-        int lmt = (addr_int|127)+1; while (addr_int < lmt) hid_vga_ptr[(addr_int++)] = ' ';
+        int lmt = (addr_int|127)+1; while (addr_int < lmt) hid_vga_ptr[(addr_int++)] = blank;
         break;
       }
-    default: hid_vga_ptr[addr_int++] = ch;
+    default: hid_vga_ptr[addr_int++] = ch|0xF00;
     }
   if (addr_int >= 4096-128)
     {
@@ -26,7 +26,7 @@ void hid_console_putchar(unsigned char ch)
         if (addr_int < 4096-128)
           hid_vga_ptr[addr_int] = hid_vga_ptr[addr_int+128];
         else
-          hid_vga_ptr[addr_int] = ' ';
+          hid_vga_ptr[addr_int] = blank;
       addr_int = 4096-256;
     }
 }
