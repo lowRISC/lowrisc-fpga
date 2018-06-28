@@ -3,7 +3,6 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdarg.h>
-//#include <stdio.h>
 #include <limits.h>
 
 #include "mini-printf.h"
@@ -206,10 +205,11 @@ uint32_t __bswap_32(uint32_t x)
       (((x) & 0x0000ff00) <<  8) | (((x) & 0x000000ff) << 24)) ;
 }
 
+uip_eth_addr mac_addr;
+
 void _init(int cid, int nc)
 {
   int sw;
-  uip_eth_addr mac_addr;
   uint32_t macaddr_lo, macaddr_hi;
   extern int main(int, char **);
   extern char _bss[], _end[];
@@ -234,6 +234,10 @@ void _init(int cid, int nc)
   eth_base[MACLO_OFFSET>>3] = __bswap_32(macaddr_lo);
   eth_base[MACHI_OFFSET>>3] = __bswap_16(macaddr_hi);
 
+  macaddr_lo = eth_base[MACLO_OFFSET>>3];
+  macaddr_hi = eth_base[MACHI_OFFSET>>3] & MACHI_MACADDR_MASK;
+  printf("Calling main with MAC = %x:%x\n", macaddr_hi&MACHI_MACADDR_MASK, macaddr_lo);
+ 
   // only single-threaded programs should ever get here.
   int ret = main(0, 0);
 

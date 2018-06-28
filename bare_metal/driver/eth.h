@@ -5,27 +5,28 @@
 
 #include <stdint.h>
 
-/* Register offsets for the LowRISC Core */
-#define TXBUFF_OFFSET       0x2000          /* Transmit Buffer */
+/* Register offsets (in bytes) for the LowRISC Core */
+#define TXBUFF_OFFSET       0x1000          /* Transmit Buffer */
 
-#define MACLO_OFFSET        0x1000          /* MAC address low 32-bits */
-#define MACHI_OFFSET        0x1008          /* MAC address high 16-bits and MAC ctrl */
-#define TPLR_OFFSET         0x1010          /* Tx packet length */
-#define TFCS_OFFSET         0x1018          /* Tx frame check sequence register */
-#define MDIOCTRL_OFFSET     0x1020          /* MDIO Control Register */
-#define RFCS_OFFSET         0x1028          /* Rx frame check sequence register */
-#define RSR_OFFSET          0x1030          /* Rx status and reset register */
-#define RPLR_OFFSET         0x1038          /* Rx packet length register */
+#define MACLO_OFFSET        0x0800          /* MAC address low 32-bits */
+#define MACHI_OFFSET        0x0808          /* MAC address high 16-bits and MAC ctrl */
+#define TPLR_OFFSET         0x0810          /* Tx packet length */
+#define TFCS_OFFSET         0x0818          /* Tx frame check sequence register */
+#define MDIOCTRL_OFFSET     0x0820          /* MDIO Control Register */
+#define RFCS_OFFSET         0x0828          /* Rx frame check sequence register(read) and last register(write) */
+#define RSR_OFFSET          0x0830          /* Rx status and reset register */
+#define RBAD_OFFSET         0x0838          /* Rx bad frame and bad fcs register arrays */
+#define RPLR_OFFSET         0x0840          /* Rx packet length register array */
 
-#define RXBUFF_OFFSET       0x0000          /* Receive Buffer */
+#define RXBUFF_OFFSET       0x4000          /* Receive Buffer */
 #define MDIORD_RDDATA_MASK    0x0000FFFF    /* Data to be Read */
 
 /* MAC Ctrl Register (MACHI) Bit Masks */
 #define MACHI_MACADDR_MASK    0x0000FFFF     /* MAC high 16-bits mask */
 #define MACHI_COOKED_MASK     0x00010000     /* obsolete flag */
 #define MACHI_LOOPBACK_MASK   0x00020000     /* Rx loopback packets */
-#define MACHI_ALLPKTS_MASK    0x00200000     /* Rx all packets (promiscuous mode) */
-#define MACHI_IRQ_EN          0x00400000     /* Rx packet interrupt enable */
+#define MACHI_ALLPKTS_MASK    0x00400000     /* Rx all packets (promiscuous mode) */
+#define MACHI_IRQ_EN          0x00800000     /* Rx packet interrupt enable */
 
 /* MDIO Control Register Bit Masks */
 #define MDIOCTRL_MDIOCLK_MASK 0x00000001    /* MDIO Clock Mask */
@@ -40,8 +41,11 @@
 #define TPLR_BUSY_MASK        0x80000000     /* Tx busy mask */
 
 /* Receive Status Register (RSR) */
-#define RSR_RECV_DONE_MASK    0x00000001      /* Rx complete */
-#define RSR_RECV_IRQ_MASK     0x00000002      /* Rx irq bit */
+#define RSR_RECV_FIRST_MASK   0x0000000F      /* first available buffer (static) */
+#define RSR_RECV_NEXT_MASK    0x000000F0      /* current rx buffer (volatile) */
+#define RSR_RECV_LAST_MASK    0x00000F00      /* last available rx buffer (static) */
+#define RSR_RECV_DONE_MASK    0x00001000      /* Rx complete */
+#define RSR_RECV_IRQ_MASK     0x00002000      /* Rx irq bit */
 
 /* Receive Packet Length Register (RPLR) */
 #define RPLR_LENGTH_MASK      0x00000FFF      /* Rx packet length */
@@ -102,5 +106,13 @@ struct uip_eth_hdr {
 
 typedef uip_eth_addr uip_lladdr_t;
 typedef uint8_t u_char;
+
+uint16_t __bswap_16(uint16_t x);
+uint32_t __bswap_32(uint32_t x);
+
+#   define ntohl(x)     __bswap_32 (x)
+#   define ntohs(x)     __bswap_16 (x)
+#   define htonl(x)     __bswap_32 (x)
+#   define htons(x)     __bswap_16 (x)
 
 #endif
