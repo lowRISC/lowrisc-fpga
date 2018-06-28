@@ -78,14 +78,15 @@ void die(char *s)
 
 static uint64_t maskarray[MAX_FILE_SIZE/CHUNK_SIZE/64];
 struct sockaddr_in si_other;
-char message[BUFLEN], digest[MD5_DIGEST_LENGTH*2+1], testreply[1024];
+char message[BUFLEN], digest[MD5_DIGEST_LENGTH*2+1];
 
-void _send_message(int s, uint16_t len)
+void send_message(int s, uint16_t idx)
 {
+  memcpy(message+CHUNK_SIZE, &idx, sizeof(uint16_t));
   //send the message
   if (sendto(s,
 	     message,
-	     len,
+	     CHUNK_SIZE+sizeof(uint16_t),
 	     0,
 	     (struct sockaddr *) &si_other,
 	     sizeof(si_other)) == -1)
@@ -93,12 +94,10 @@ void _send_message(int s, uint16_t len)
   usleep(10000);
 }
 
-#define send_message(s, ix) { uint16_t idx = ix; memcpy(message+CHUNK_SIZE, &idx, sizeof(uint16_t)), _send_message(s, CHUNK_SIZE+sizeof(uint16_t)); }
-
 int recv_message(int sockfd, int typ)
 {
   int update = 0;
-  int32_t numbytes;
+  int numbytes;
   uint8_t buf[BUF_SIZ];
   /* Header structures */
   struct ether_header *eh = (struct ether_header *) buf;
@@ -107,7 +106,7 @@ int recv_message(int sockfd, int typ)
   uint8_t *payload = (buf + sizeof(struct iphdr) + sizeof(struct ether_header) + sizeof(struct udphdr));
   do {
     numbytes = recvfrom(sockfd, buf, BUF_SIZ, 0, NULL, NULL);
-    if ((numbytes != -1) && (numbytes > sizeof(struct iphdr) + sizeof(struct ether_header) + sizeof(struct udphdr)) &&
+    if ((numbytes > sizeof(struct iphdr) + sizeof(struct ether_header) + sizeof(struct udphdr)) &&
         (ntohs(eh->ether_type)==ETH_P_IP) &&
         (iph->protocol==IPPROTO_UDP))
       {
@@ -116,10 +115,10 @@ int recv_message(int sockfd, int typ)
         int dport = ntohs(udph->dest);
         /* Check the packet is for me */
           if ((sport == 8888) && (dport == 8888)) {
-#if 1
-         printf("listener: got packet %u bytes\n", numbytes);
-#endif          
           /* UDP payload length */
+#if 1
+          printf("listener: got packet %u bytes\n", len);
+#endif          
           switch (len)
             {
             case sizeof(maskarray):
@@ -128,10 +127,6 @@ int recv_message(int sockfd, int typ)
               break;
             case MD5_DIGEST_LENGTH*2+1:
               memcpy(digest, payload, len);
-              update = (len==typ);
-              break;
-            case sizeof(testreply):
-              memcpy(testreply, payload, len);
               update = (len==typ);
               break;
             default:
@@ -167,7 +162,6 @@ int main(int argc, char *argv[])
   int md5digest = 0;
   int go = 1;
   int oldpercent = -1;
-  int testmode = 0;
   struct ifreq ifopts;	/* set promiscuous mode */
   struct ifreq if_ip;	/* get ip addr */
   struct sockaddr_storage their_addr;
@@ -189,13 +183,6 @@ int main(int argc, char *argv[])
   if (!strcmp(argv[1], "-d"))
     {
       md5digest = 1;
-      ++argv;
-      --argc;
-    }
-  
-  if (!strcmp(argv[1], "-t"))
-    {
-      testmode = 1;
       ++argv;
       --argc;
     }
@@ -256,23 +243,6 @@ int main(int argc, char *argv[])
   read_timeout.tv_usec = 100;
   setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &read_timeout, sizeof read_timeout);
 
-  while (testmode)
-    {
-      enum {siz=sizeof(testreply)};
-      for (int i = 0; i < siz; i++)
-        message[i] = rand();
-      _send_message(s, siz);
-      usleep(100000);
-      while (!recv_message(sockfd, sizeof(testreply)))
-        ;
-      printf("received reply\n");
-      for (int i = 0; i < siz; i++)
-        {
-          if (message[i] != testreply[i])
-            printf("Reply error at ix=%d\n", i);
-        }
-    }
-  
   /* restart */
   while (restart)
     {
