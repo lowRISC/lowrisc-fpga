@@ -34,3 +34,8 @@ volatile uint64_t * get_flash_base() {
   return (uint64_t *)0;         /* boot ROM, raise error */
 #endif
 }
+
+void write_led(uint32_t data)
+{
+  sd_base[15] = data;
+}

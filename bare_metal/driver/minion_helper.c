@@ -181,11 +181,6 @@ void sdhci_reset(struct bootstrap_host *host, uint8_t mask);
 
 void minion_dispatch(const char *ucmd);
 
-void write_led(uint32_t data)
-{
-  sd_base[15] = data;
-}
-
 uint32_t sd_resp(int sel)
 {
   uint32_t rslt = sd_base[sel];

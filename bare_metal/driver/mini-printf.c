@@ -203,7 +203,7 @@ int sprintf(char* buffer, const char *fmt, ...)
 
 int printf (const char *fmt, ...)
 {
-  char buffer[99];
+  char buffer[256];
   va_list va;
   int rslt;
   va_start(va, fmt);

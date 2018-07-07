@@ -33,7 +33,7 @@ default: all
 
 TARGETS = dram hello sdcard trace jump flash tag selftest eth
 
-DRIVER_TARGETS = syscalls hid memory memcmp memcpy memset strcpy strlen strnlen wordcopy elf diskio ff minion_helper sdhci-minion-hash-md5 mini-printf random
+DRIVER_TARGETS = syscalls hid memory memcmp memcpy memset strcmp strcpy strlen strnlen wordcopy elf diskio ff minion_helper sdhci-minion-hash-md5 mini-printf random dhcp-client
 
 HEADERS += $(wildcard $(DRIVER_DIR)/*.h)
 
