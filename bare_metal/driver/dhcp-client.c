@@ -123,7 +123,6 @@ in_cksum(unsigned short *addr, int len)
  */
 void dhcp_input(dhcp_t *dhcp)
 {
-  uint32_t myip, sip;
   u_int16_t   flags;
   uip_ipaddr_t addr, saddr;
   if (dhcp->opcode != DHCP_OPTION_OFFER)
@@ -131,19 +130,15 @@ void dhcp_input(dhcp_t *dhcp)
 
   //  print_packet((u_int8_t *)dhcp, sizeof(dhcp_t));
   
-  /* Get the IP address given by the server */
-  memcpy(&myip, &(dhcp->yiaddr), sizeof(myip));
-  myip = ntohl(myip);
-  /* Get the IP address given by the server */
-  memcpy(&sip, &(dhcp->siaddr), sizeof(sip));
-  sip = ntohl(sip);
   /* get flags */
   memcpy(&flags, &(dhcp->flags), sizeof(flags));
   flags = ntohs(flags);
 
-  memcpy(&addr, &myip, sizeof(uint32_t));
-  memcpy(&saddr, &sip, sizeof(uint32_t));
-  printf("Client IP Address:  %d.%d.%d.%d, flags = %x, server = %s\n", uip_ipaddr_to_quad(&addr), flags, dhcp->bp_sname);
+  /* Get the IP address given by the server */
+  memcpy(&addr, &(dhcp->yiaddr), sizeof(uint32_t));
+  memcpy(&saddr, &(dhcp->siaddr), sizeof(uint32_t));
+  printf("DHCP Client IP Address:  %d.%d.%d.%d, flags = %x, server = %s\n", uip_ipaddr_to_quad(&addr), flags, dhcp->bp_sname);
+  uip_sethostaddr(&addr);
   printf("Server IP Address:  %d.%d.%d.%d\n", uip_ipaddr_to_quad(&saddr));
 
   /* We are done - lets break the loop */

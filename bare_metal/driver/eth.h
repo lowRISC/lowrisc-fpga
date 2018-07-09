@@ -216,18 +216,27 @@ struct ip
 typedef uip_eth_addr uip_lladdr_t;
 typedef uint8_t u_char;
 
+#if 0
 uint16_t __bswap_16(uint16_t x);
 uint32_t __bswap_32(uint32_t x);
+#endif
 
-#define ntohl(x) my_ntohl(&(x))
-#define ntohs(x) my_ntohs(&(x))
-#define htonl(x) my_ntohl(&(x))
-#define htons(x) my_ntohs(&(x))
+#define ntohl(x) ({ uint32_t __tmp; \
+      uint8_t *optr = (uint8_t *)&__tmp; \
+      uint8_t *iptr = (uint8_t *)&(x); \
+      int i; \
+      for (i = 0; i < sizeof(uint32_t); i++) optr[sizeof(uint32_t)-i-1] = iptr[i]; \
+      __tmp; })
 
-uint16_t my_ntohl(uint32_t *x);
-uint16_t my_ntohs(uint16_t *x);
-uint16_t my_htonl(uint32_t *x);
-uint16_t my_htons(uint16_t *x);
+#define ntohs(x) ({ uint16_t __tmp; \
+      uint8_t *optr = (uint8_t *)&__tmp; \
+      uint8_t *iptr = (uint8_t *)&(x); \
+      int i; \
+      for (i = 0; i < sizeof(uint16_t); i++) optr[sizeof(uint16_t)-i-1] = iptr[i]; \
+      __tmp; })
+
+#define htonl(x) ntohl(x)
+#define htons(x) ntohs(x)
 
 typedef unsigned int __u_int;
 typedef __u_int bpf_u_int32;
@@ -278,6 +287,8 @@ typedef struct dhcp
     uint32_t    magic_cookie;
     u_int8_t    bp_options[0];
 } dhcp_t;
+
+extern uip_ipaddr_t uip_hostaddr, uip_draddr, uip_netmask;
 
 int dhcp_main(u_int8_t mac[6]);
 void lite_queue(const void *buf, int length);

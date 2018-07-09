@@ -45,32 +45,12 @@ outqueue_t *txbuf;
 //#define VERBOSE
 //#define UDP_DEBUG
 
-uint16_t my_ntohs(uint16_t *x)
+inline void *memcpy(void *o, const void *i, size_t n)
 {
-  uint16_t x0;
-  memcpy(&x0, x, sizeof(uint16_t));
-  return __bswap_16 (x0);
-}
-
-uint16_t my_ntohl(uint32_t *x)
-{
-  uint32_t x0;
-  memcpy(&x0, x, sizeof(uint32_t));
-  return __bswap_32 (x0);
-}
-
-uint16_t my_htons(uint16_t *x)
-{
-  uint16_t x0;
-  memcpy(&x0, x, sizeof(uint16_t));
-  return __bswap_16 (x0);
-}
-
-uint16_t my_htonl(uint32_t *x)
-{
-  uint32_t x0;
-  memcpy(&x0, x, sizeof(uint32_t));
-  return __bswap_32 (x0);
+  uint8_t *optr = o;
+  const uint8_t *iptr = i; 
+  while (n--) *optr++ = *iptr++;
+  return o;
 }
 
 static void eth_write(size_t addr, uint64_t data)
@@ -186,7 +166,7 @@ void lite_queue(const void *buf, int length)
   int i, rslt;
   int rnd = ((length-1|7)+1);
   uint64_t *alloc = sbrk(rnd);
-  memcpy(alloc, buf, length);
+  __builtin_memcpy(alloc, buf, length);
   txbuf[txhead].alloc = alloc;
   txbuf[txhead].len = length;
   txhead = (txhead+1) % queuelen;
@@ -414,12 +394,12 @@ int eth_main(void) {
   uip_setethaddr(mac_addr);
   
   uip_ipaddr(&addr, 192,168,0,51);
-  printf("IP Address:  %d.%d.%d.%d\n", uip_ipaddr_to_quad(&addr));
+  printf("Default IP Address:  %d.%d.%d.%d\n", uip_ipaddr_to_quad(&addr));
   uip_sethostaddr(&addr);
     
   uip_ipaddr(&addr, 255,255,255,0);
   uip_setnetmask(&addr);
-  printf("Subnet Mask: %d.%d.%d.%d\n", uip_ipaddr_to_quad(&addr));
+  printf("Default Subnet Mask: %d.%d.%d.%d\n", uip_ipaddr_to_quad(&addr));
   memset(peer_addr, -1, sizeof(peer_addr));
   
   printf("Enabling interrupts\n");
@@ -934,11 +914,13 @@ int raw_udp_main(void *msg, int payload_size, uint16_t peer_port)
 
 int main()
 {
-  int sw = sd_resp(31);
+  int i, sw = sd_resp(31);
   loopback_test(8, (sw & 0xF) == 0xF);
   init_plic();
 
   hid_send_string("lowRISC etherboot program\n=====================================\n");
 
+  for (i = 10000000; i; i--)
+    write_led(i);
   eth_main();
 }
