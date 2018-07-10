@@ -20,7 +20,7 @@ volatile uint64_t * get_bram_base() {
 }
 
 volatile uint64_t * get_ddr_base() {
-  return (uint64_t *)0x80000000;
+  return (uint64_t *)ddr_base_addr;
 }
 
 volatile uint64_t  get_ddr_size() {

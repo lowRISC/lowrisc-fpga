@@ -31,6 +31,7 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <openssl/md5.h>
+#include <netdb.h>
 
 int select_wait(int sockfd)
 {
@@ -172,7 +173,9 @@ int main(int argc, char *argv[])
   int incomplete = 1;
   uint16_t idx;
   char *m;
-
+  char *server = SERVER;
+  struct hostent *host;
+  
   if (!strcmp(argv[1], "-r"))
     {
       restart = 1;
@@ -187,6 +190,14 @@ int main(int argc, char *argv[])
       --argc;
     }
   
+  if (!strcmp(argv[1], "-s"))
+    {
+      server = argv[2];
+      argv += 2;
+      argc -= 2;
+    }
+  printf("Server(target) set to %s\n", server);
+
   /* Get interface name */
   if (argc < 3)
     die("args: interface (e.g. eth0) file (e.g. boot.bin)");
@@ -195,16 +206,40 @@ int main(int argc, char *argv[])
   si_other.sin_family = AF_INET;
   si_other.sin_port = htons(PORT);
      
-  if (inet_aton(SERVER, &si_other.sin_addr) == 0) 
+  host = gethostbyname(server);
+  if (!host)
     {
-      fprintf(stderr, "inet_aton() failed\n");
+      fprintf(stderr, "gethostbyname() failed\n");
       exit(1);
     }    
-    
+  else
+    {
+      unsigned char server2[20], *s = host->h_addr_list[0];
+      sprintf(server2, "%d.%d.%d.%d", s[0], s[1], s[2], s[3]);
+      if (inet_aton(server2, &si_other.sin_addr) == 0)
+        {
+          fprintf(stderr, "inet_aton() failed\n");
+          exit(1);
+        }    
+      else
+        printf("server address %s\n", server2);
+      
+    }
+  
   if ( (s=socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1) die("socket");
 
   strcpy(ifName, argv[1]);
+  if (ifName[0] == '-' || argc > 3)
+    {
+      fprintf(stderr, "Unhandled option %s\n", argv[1]);
+      exit(1);
+    }
+    
   fd = open(argv[2], O_RDONLY);
+  if (fd < 0)
+    {
+      perror(argv[2]);
+    }
   len = lseek(fd, 0, SEEK_END);
   chunks = (len+CHUNK_SIZE-1) / CHUNK_SIZE;
   printf("File = %s, len = %d, chunks = %d\n", argv[2], len, chunks);

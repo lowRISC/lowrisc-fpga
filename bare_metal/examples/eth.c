@@ -48,37 +48,44 @@ outqueue_t *txbuf;
 inline void *memcpy(void *o, const void *i, size_t n)
 {
   uint8_t *optr = o;
-  const uint8_t *iptr = i; 
+  const uint8_t *iptr = i;
+
+  if ((uint64_t)o < 0x40000000 || (uint64_t)o >= 0x88000000 || (uint64_t)i < 0x40000000 || (uint64_t)i >= 0x88000000)
+    {
+      printf("memcpy internal error, %x <= %x\n", o, i);
+      for(;;)
+        ;
+    }
+#if 0
+  printf("memcpy(%x,%x,%x);\n", o, i, n);
+#endif  
   while (n--) *optr++ = *iptr++;
   return o;
 }
 
-static void eth_write(size_t addr, uint64_t data)
+size_t strlen (const char *str)
 {
-  if ((addr < 0x8000) && !(addr&7))
+  const char *char_ptr = str;
+
+  if ((uint64_t)str < 0x40000000 || (uint64_t)str >= 0x88000000)
     {
-#ifdef VERBOSE      
-      printf("eth_write(%x,%x)\n", addr, data);
-#endif      
-      eth_base[addr >> 3] = data;
+      printf("strlen internal error, %x\n", str);
+      for(;;)
+        ;
     }
-  else
-    printf("eth_write(%x,%x) out of range\n", addr, data);
+  while (*char_ptr)
+    ++char_ptr;
+  return char_ptr - str;
 }
 
-static uint64_t eth_read(size_t addr)
+static void inline eth_write(size_t addr, uint64_t data)
 {
-  uint64_t retval = 0xDEADBEEF;
-  if ((addr < 0x8000) && !(addr&7))
-    {
-      retval = eth_base[addr >> 3];
-#ifdef VERBOSE      
-      printf("eth_read(%x) returned %x\n", addr, retval);
-#endif      
-    }
-  else
-    printf("eth_read(%x) out of range\n", addr);
-  return retval;
+  eth_base[addr >> 3] = data;
+}
+
+static uint64_t inline eth_read(size_t addr)
+{
+  return eth_base[addr >> 3];
 }
 
 /* General Ethernet Definitions */
@@ -94,12 +101,12 @@ static uint64_t eth_read(size_t addr)
 #define ETH_FRAME_LEN	1514		/* Max. octets in frame sans FCS */
 
 extern uip_eth_addr mac_addr;
+static unsigned long sbrk_rused;
 
-void *sbrk(size_t len)
+inline void * sbrk(size_t len)
 {
-  static unsigned long rused = 0;
-  char *rd = rused + (char *)get_ddr_base();
-  rused += ((len-1)|7)+1;
+  char *rd = (char *)(sbrk_rused + 0x80000000);
+  sbrk_rused += ((len-1)|7)+1;
   return rd;
 }
 
@@ -139,6 +146,7 @@ static int copyin_pkt(void)
       // Do we need to read the packet at all ??
       uint16_t rxheader = alloc32[HEADER_OFFSET >> 2];
       int proto_type = ntohs(rxheader) & 0xFFFF;
+      write_led(proto_type);
       switch (proto_type)
           {
           case ETH_P_IP:
@@ -166,7 +174,7 @@ void lite_queue(const void *buf, int length)
   int i, rslt;
   int rnd = ((length-1|7)+1);
   uint64_t *alloc = sbrk(rnd);
-  __builtin_memcpy(alloc, buf, length);
+  memcpy(alloc, buf, length);
   txbuf[txhead].alloc = alloc;
   txbuf[txhead].len = length;
   txhead = (txhead+1) % queuelen;
@@ -222,31 +230,10 @@ static void dumpregs(const char *msg)
 void external_interrupt(void)
 {
   int claim, handled = 0;
-#ifdef VERBOSE
-  printf("Hello external interrupt! "__TIMESTAMP__"\n");
-#endif  
   claim = plic[0x80001];
-  dumpregs("before");
   /* Check if there is Rx Data available */
   while (eth_read(RSR_OFFSET) & RSR_RECV_DONE_MASK)
-    {
-#ifdef VERBOSE
-      printf("Ethernet interrupt\n");
-#endif  
-      int length = copyin_pkt();
-      handled = 1;
-    }
-  if (hid_check_read_irq())
-    {
-      int rslt = hid_read_irq();
-      printf("uart interrupt read %x (%c)\n", rslt, rslt);
-      handled = 1;
-    }
-  if (!handled)
-    {
-      printf("unhandled interrupt!\n");
-    }
-  dumpregs("after");
+      copyin_pkt();
   plic[0x80001] = claim;
 }
     // Function for checksum calculation. From the RFC,
@@ -370,13 +357,17 @@ void init_plic(void)
 }
 
 int eth_main(void) {
+  int dhcp_off_cnt = 0;
+  int dhcp_ack_cnt = 0;
   uip_ipaddr_t addr;
   uint64_t lo = eth_read(MACLO_OFFSET);
   uint64_t hi = eth_read(MACHI_OFFSET) & MACHI_MACADDR_MASK;
+  // enable ints
   eth_write(MACHI_OFFSET, MACHI_IRQ_EN|hi);
+  sbrk_rused = 0;
   rxbuf = (inqueue_t *)sbrk(sizeof(inqueue_t)*queuelen);
   txbuf = (outqueue_t *)sbrk(sizeof(outqueue_t)*queuelen);
-  //  maskarray = (uint64_t *)sbrk(sizeof_maskarray);
+  // maskarray = (uint64_t *)sbrk(sizeof_maskarray);
   memset(maskarray, 0, sizeof_maskarray);
   
 #ifndef VERBOSE  
@@ -392,14 +383,7 @@ int eth_main(void) {
          );
 #endif
   uip_setethaddr(mac_addr);
-  
-  uip_ipaddr(&addr, 192,168,0,51);
-  printf("Default IP Address:  %d.%d.%d.%d\n", uip_ipaddr_to_quad(&addr));
-  uip_sethostaddr(&addr);
-    
-  uip_ipaddr(&addr, 255,255,255,0);
-  uip_setnetmask(&addr);
-  printf("Default Subnet Mask: %d.%d.%d.%d\n", uip_ipaddr_to_quad(&addr));
+
   memset(peer_addr, -1, sizeof(peer_addr));
   
   printf("Enabling interrupts\n");
@@ -438,7 +422,7 @@ int eth_main(void) {
         uint16_t rxheader = alloc32[HEADER_OFFSET >> 2];
         int proto_type = ntohs(rxheader) & 0xFFFF;
 #ifdef VERBOSE
-        printf("alloc = %x\n", alloc);
+        printf("alloc32 = %x\n", alloc32);
         printf("rxhead = %d, rxtail = %d\n", rxhead, rxtail);
 #endif
         switch (proto_type)
@@ -461,7 +445,7 @@ int eth_main(void) {
               } *BUF = ((struct ethip_hdr *)alloc32);
               uip_ipaddr_t addr = BUF->srcipaddr;
 #ifdef VERBOSE
-              printf("proto = IP\n");
+              printf("IP proto = %d\n", BUF->proto);
               printf("Source IP Address:  %d.%d.%d.%d\n", uip_ipaddr_to_quad(&(BUF->srcipaddr)));
               printf("Destination IP Address:  %d.%d.%d.%d\n", uip_ipaddr_to_quad(&(BUF->destipaddr)));
 #endif
@@ -524,6 +508,12 @@ int eth_main(void) {
                     int16_t dport = ntohs(udp_hdr->uh_dport);
                     int16_t ulen = ntohs(udp_hdr->uh_ulen);
                     uint16_t peer_port = ntohs(udp_hdr->uh_sport);
+#if 1 // def VERBOSE                                              
+                    printf("IP Proto = UDP, source port = %d, dest port = %d, length = %d\n",
+                           ntohs(udp_hdr->uh_sport),
+                           dport,
+                           ulen);
+#endif                        
                     if (dport == PORT)
                       {
                         if (memcmp(peer_addr, BUF->ethhdr.src.addr, 6))
@@ -542,7 +532,8 @@ int eth_main(void) {
                       }
                     else if (peer_port == DHCP_SERVER_PORT)
                       {
-                        dhcp_input((dhcp_t *)(udp_hdr->body));
+                        if (!(dhcp_off_cnt && dhcp_ack_cnt))
+                          dhcp_input((dhcp_t *)(udp_hdr->body), mac_addr.addr, &dhcp_off_cnt, &dhcp_ack_cnt);
                       }
                     else
                       {
@@ -601,7 +592,8 @@ int eth_main(void) {
 #ifdef VERBOSE
              printf("proto = ARP\n");
 #endif
-             if(uip_ipaddr_cmp(&BUF->dipaddr, &uip_hostaddr)) {
+             if(uip_ipaddr_cmp(&BUF->dipaddr, &uip_hostaddr))
+               {
                 int len = sizeof(struct arp_hdr);
                 BUF->opcode = __htons(2);
                 
@@ -619,7 +611,11 @@ int eth_main(void) {
                 printf("sending ARP reply (length = %d)\n", len);
 #endif
                 lite_queue(alloc32, len);
-              }
+               }
+             else
+               {
+                 printf("ARP  %d.%d.%d.%d, my addr =  %d.%d.%d.%d\n", uip_ipaddr_to_quad(&BUF->dipaddr), uip_ipaddr_to_quad(&uip_hostaddr));
+               }
             }
             break;
           case ETH_P_IPV6:

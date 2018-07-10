@@ -19,22 +19,32 @@
 #define DHCP_BOOTREQUEST                    1
 #define DHCP_BOOTREPLY                      2
 
-#define DHCP_HARDWARE_TYPE_10_EHTHERNET     1
+#define DHCP_HARDWARE_TYPE_10_ETHERNET      1
 
 #define MESSAGE_TYPE_PAD                    0
 #define MESSAGE_TYPE_REQ_SUBNET_MASK        1
 #define MESSAGE_TYPE_ROUTER                 3
 #define MESSAGE_TYPE_DNS                    6
+#define MESSAGE_TYPE_HOST_NAME              12
 #define MESSAGE_TYPE_DOMAIN_NAME            15
+#define MESSAGE_TYPE_NTP_SERVER             42
 #define MESSAGE_TYPE_REQ_IP                 50
+#define MESSAGE_TYPE_LEASE_TIME             51
 #define MESSAGE_TYPE_DHCP                   53
+#define MESSAGE_TYPE_SERVER_ID              54
 #define MESSAGE_TYPE_PARAMETER_REQ_LIST     55
+#define MESSAGE_TYPE_ERR                    56
+#define MESSAGE_TYPE_CLIENT_ID              61
 #define MESSAGE_TYPE_END                    255
 
 #define DHCP_OPTION_DISCOVER                1
 #define DHCP_OPTION_OFFER                   2
 #define DHCP_OPTION_REQUEST                 3
-#define DHCP_OPTION_PACK                    4
+#define DHCP_OPTION_DECLINE                 4
+#define DHCP_OPTION_ACK                     5
+#define DHCP_OPTION_NAK                     6
+#define DHCP_OPTION_RELEASE                 7
+#define DHCP_OPTION_INFORM                  8
 
 typedef enum {
     VERBOSE_LEVEL_NONE,
@@ -59,6 +69,9 @@ do{                                                                     \
 const verbose_level_t program_verbose_level = VERBOSE_LEVEL_DEBUG;
 u_int32_t ip;
 
+static int
+dhcp_request(u_int8_t *mac, u_int32_t req_ip, u_int32_t server_id);
+
 /*
  * Print the Given ethernet packet in hexa format - Just for debugging
  */
@@ -73,15 +86,6 @@ print_packet(const u_int8_t *data, int len)
             printf("\n %04x :: ", i);
         printf("%02x ", data[i]);
     }
-}
-
-/*
- * Get MAC address of given link(dev_name)
- */
-static int
-get_mac_address(char *dev_name, u_int8_t *mac)
-{
-    return 0;
 }
 
 /*
@@ -121,67 +125,120 @@ in_cksum(unsigned short *addr, int len)
 /*
  * This function will be called for any incoming DHCP responses
  */
-void dhcp_input(dhcp_t *dhcp)
+void dhcp_input(dhcp_t *dhcp, u_int8_t *mac, int *offcount, int *ackcount)
 {
+  int len = 0;
+  char err[256];
+  char domain[256];
+  char hostname[256];
+  u_int8_t code;
   u_int16_t   flags;
-  uip_ipaddr_t addr, saddr;
-  if (dhcp->opcode != DHCP_OPTION_OFFER)
-        return;
-
-  //  print_packet((u_int8_t *)dhcp, sizeof(dhcp_t));
-  
-  /* get flags */
-  memcpy(&flags, &(dhcp->flags), sizeof(flags));
-  flags = ntohs(flags);
-
-  /* Get the IP address given by the server */
-  memcpy(&addr, &(dhcp->yiaddr), sizeof(uint32_t));
-  memcpy(&saddr, &(dhcp->siaddr), sizeof(uint32_t));
-  printf("DHCP Client IP Address:  %d.%d.%d.%d, flags = %x, server = %s\n", uip_ipaddr_to_quad(&addr), flags, dhcp->bp_sname);
-  uip_sethostaddr(&addr);
-  printf("Server IP Address:  %d.%d.%d.%d\n", uip_ipaddr_to_quad(&saddr));
-
-  /* We are done - lets break the loop */
-  //    pcap_breakloop(pcap_handle);
-}
-
-/*
- * UDP packet handler
- */
-static void
-udp_input(struct udphdr * udp_packet)
-{
-    /* Check if there is a response from DHCP server by checking the source Port */
-    if (ntohs(udp_packet->uh_sport) == DHCP_SERVER_PORT)
-        dhcp_input((dhcp_t *)((char *)udp_packet + sizeof(struct udphdr)));
-}
-
-/*
- * IP Packet handler
- */
-static void
-ip_input(struct ip * ip_packet)
-{
-    /* Care only about UDP - since DHCP sits over UDP */
-    if (ip_packet->ip_p == IPPROTO_UDP)
-        udp_input((struct udphdr *)((char *)ip_packet + sizeof(struct ip)));
-}
-
-/*
- * Ethernet packet handler
- */
-static void
-ether_input(u_char *args, const struct pcap_pkthdr *header, const u_char *frame)
-{
-    struct ether_header *eframe = (struct ether_header *)frame;
-
-    PRINT(VERBOSE_LEVEL_DEBUG, "Received a frame with length of [%d]", header->len);
-
-    if (program_verbose_level == VERBOSE_LEVEL_DEBUG)
-        print_packet(frame, header->len);
-
-    if (htons(eframe->ether_type) == ETHERTYPE_IP)
-        ip_input((struct ip *)(frame + sizeof(struct ether_header)));
+  uint32_t lease = 0;
+  u_int8_t option = 0;
+  uip_ipaddr_t req_ip, server_id, netmask, router, dns_id, ntp_id;
+  if ((uint64_t)dhcp < 0x40000000 || (uint64_t)dhcp >= 0x88000000)
+    {
+      printf("dhcp internal error, %x\n", dhcp);
+      for(;;)
+        ;
+    }
+  if (dhcp->opcode != 2)
+    return;
+  do {
+    u_int8_t *opt_field = &dhcp->bp_options[len];
+    code  = opt_field[0];
+    u_int8_t field_len = opt_field[1];
+    u_int8_t *data = &opt_field[2];
+    len += field_len + (sizeof(u_int8_t) * 2);
+    switch(code)
+      {
+      case MESSAGE_TYPE_DNS:
+        memcpy(&dns_id, data, sizeof(dns_id));
+        break;
+      case MESSAGE_TYPE_HOST_NAME:
+        memcpy(hostname, data, field_len);
+        hostname[field_len] = 0;
+        break;
+      case MESSAGE_TYPE_NTP_SERVER:
+        memcpy(&ntp_id, data, sizeof(ntp_id));
+        break;
+      case MESSAGE_TYPE_SERVER_ID:
+        memcpy(&server_id, data, sizeof(server_id));
+        break;
+      case MESSAGE_TYPE_LEASE_TIME:
+        memcpy(&lease, data, sizeof(lease));
+        lease = ntohl(lease);
+        break;
+      case MESSAGE_TYPE_REQ_SUBNET_MASK:
+        memcpy(&netmask, data, sizeof(netmask));
+        break;
+      case MESSAGE_TYPE_ROUTER:
+        memcpy(&router, data, sizeof(router));
+        break;
+      case MESSAGE_TYPE_DOMAIN_NAME:
+        memcpy(domain, data, field_len);
+        domain[field_len] = 0;
+        break;
+      case MESSAGE_TYPE_DHCP:
+        memcpy(&option, data, sizeof(option));
+        break;
+      case MESSAGE_TYPE_ERR:
+        memcpy(err, data, field_len);
+        err[field_len] = 0;
+        break;
+      case MESSAGE_TYPE_END:
+        switch(option)
+          {
+          case DHCP_OPTION_OFFER:
+            if (!*offcount) // Only accept the first offer
+              {
+                u_int32_t req_ip, server_id;                
+                ++*offcount;
+                /* Get the IP address given by the server */
+                memcpy(&req_ip, &(dhcp->yiaddr), sizeof(u_int32_t));
+                memcpy(&server_id, &(dhcp->siaddr), sizeof(u_int32_t));
+                dhcp_request(mac, req_ip, server_id);
+              }
+            break;
+          case DHCP_OPTION_ACK:
+            if (!*ackcount)
+              {
+                ++*ackcount;
+                printf("DHCP ACK\n");            
+                /* Get the IP address given by the server */
+                memcpy(&req_ip, &(dhcp->yiaddr), sizeof(uint32_t));
+                memcpy(&server_id, &(dhcp->siaddr), sizeof(uint32_t));
+                printf("DHCP Client IP Address:  %d.%d.%d.%d\n", uip_ipaddr_to_quad(&req_ip));
+                uip_sethostaddr(&req_ip);
+                printf("Server IP Address:  %d.%d.%d.%d\n", uip_ipaddr_to_quad(&server_id));
+                printf("Router address:  %d.%d.%d.%d\n", uip_ipaddr_to_quad(&router));
+                printf("Net mask address:  %d.%d.%d.%d\n", uip_ipaddr_to_quad(&netmask));
+                uip_setnetmask(&netmask);
+                printf("Lease time = %d\n", lease);
+                printf("domain = %s\n", domain);
+                printf("server = %s\n", hostname);
+              }
+            else
+              printf("ACK SKIPPED\n");
+            break;
+          case DHCP_OPTION_NAK:
+            if (!*ackcount)
+              {
+                ++*ackcount;
+                printf("DHCP NAK\n");            
+                printf("Requested address refused\n");
+                printf("Error %s\n", err);
+              }
+            break;
+          default:
+            printf("unhandled option %d\n", option);
+          }
+        break;
+      default:
+        printf("Unhandled DHCP opcode %d\n", code);
+      }
+  } while (code != MESSAGE_TYPE_END);
+  printf("DHCP process exited\n");
 }
 
 int my_inject(const void *buf, size_t siz)
@@ -266,7 +323,7 @@ dhcp_output(dhcp_t *dhcp, u_int8_t *mac, int *len)
     memset(dhcp, 0, sizeof(dhcp_t));
 
     dhcp->opcode = DHCP_BOOTREQUEST;
-    dhcp->htype = DHCP_HARDWARE_TYPE_10_EHTHERNET;
+    dhcp->htype = DHCP_HARDWARE_TYPE_10_ETHERNET;
     dhcp->hlen = 6;
     memcpy(dhcp->chaddr, mac, DHCP_CHADDR_LEN);
 
@@ -299,8 +356,10 @@ fill_dhcp_discovery_options(dhcp_t *dhcp)
 
     option = DHCP_OPTION_DISCOVER;
     len += fill_dhcp_option(&dhcp->bp_options[len], MESSAGE_TYPE_DHCP, &option, sizeof(option));
+#if 0
     req_ip = __htonl(0xc0a8010a);
     len += fill_dhcp_option(&dhcp->bp_options[len], MESSAGE_TYPE_REQ_IP, (u_int8_t *)&req_ip, sizeof(req_ip));
+#endif    
     len += fill_dhcp_option(&dhcp->bp_options[len], MESSAGE_TYPE_PARAMETER_REQ_LIST, (u_int8_t *)&parameter_req_list, sizeof(parameter_req_list));
     option = 0;
     len += fill_dhcp_option(&dhcp->bp_options[len], MESSAGE_TYPE_END, &option, sizeof(option));
@@ -335,13 +394,60 @@ dhcp_discovery(u_int8_t *mac)
     return 0;
 }
 
+/*
+ * Fill DHCP options
+ */
+static int
+fill_dhcp_request_options(dhcp_t *dhcp, u_int32_t req_ip, u_int32_t server_id)
+{
+    int len = 0;
+    u_int8_t parameter_req_list[] = {MESSAGE_TYPE_REQ_IP, MESSAGE_TYPE_SERVER_ID};
+    u_int8_t option;
+
+    option = DHCP_OPTION_REQUEST;
+    len += fill_dhcp_option(&dhcp->bp_options[len], MESSAGE_TYPE_DHCP, &option, sizeof(option));
+    len += fill_dhcp_option(&dhcp->bp_options[len], MESSAGE_TYPE_REQ_IP, (u_int8_t *)&req_ip, sizeof(req_ip));
+    len += fill_dhcp_option(&dhcp->bp_options[len], MESSAGE_TYPE_SERVER_ID, (u_int8_t *)&server_id, sizeof(server_id));
+    option = 0;
+    len += fill_dhcp_option(&dhcp->bp_options[len], MESSAGE_TYPE_END, &option, sizeof(option));
+
+    return len;
+}
+
+/*
+ * Send DHCP REQUEST packet
+ */
+static int
+dhcp_request(u_int8_t *mac, u_int32_t req_ip, u_int32_t server_id)
+{
+    int len = 0;
+    u_char packet[4096];
+    struct udphdr *udp_header;
+    struct ip *ip_header;
+    dhcp_t *dhcp;
+
+    PRINT(VERBOSE_LEVEL_INFO, "Sending DHCP_REQUEST");
+
+    ip_header = (struct ip *)(packet + sizeof(struct ether_header));
+    udp_header = (struct udphdr *)(((char *)ip_header) + sizeof(struct ip));
+    dhcp = (dhcp_t *)(((char *)udp_header) + sizeof(struct udphdr));
+
+    len = fill_dhcp_request_options(dhcp, req_ip, server_id);
+    dhcp_output(dhcp, mac, &len);
+    udp_output(udp_header, &len);
+    ip_output(ip_header, &len);
+    ether_output(packet, mac, len);
+
+    return 0;
+}
+
 typedef void (*pcap_handler)(u_char *, const struct pcap_pkthdr *, const u_char *);
 
 int dhcp_main(u_int8_t mac[6])
 {
     int result;
     char errbuf[PCAP_ERRBUF_SIZE];
-    char *dev;
+    char *dev = "eth0";
 
     PRINT(VERBOSE_LEVEL_INFO, "%s MAC : %02X:%02X:%02X:%02X:%02X:%02X",
           dev, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
@@ -360,9 +466,3 @@ int dhcp_main(u_int8_t mac[6])
       }
     return result;
 }
-
-#if 0
-/* Listen till the DHCP OFFER comes */
-    my_loop(-1, ether_input, NULL);
-    printf("Got IP %u.%u.%u.%u\n", ip >> 24, ((ip << 8) >> 24), (ip << 16) >> 24, (ip << 24) >> 24);
-#endif

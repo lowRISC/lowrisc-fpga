@@ -164,7 +164,7 @@ vsnprintf(char *buffer, size_t buffer_len, const char *fmt, va_list va)
 					break;
 
 				case 's' :
-					ptr = va_arg(va, char*);
+                                        ptr = (char *)(va_arg(va, size_t) & 0xFFFFFFFF); // a horrible hack
 					_puts(ptr, strlen(ptr));
 					break;
 
