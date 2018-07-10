@@ -56,9 +56,8 @@ inline void *memcpy(void *o, const void *i, size_t n)
       for(;;)
         ;
     }
-#if 0
-  printf("memcpy(%x,%x,%x);\n", o, i, n);
-#endif  
+
+  //  printf("memcpy(%x,%x,%x);\n", o, i, n);
   while (n--) *optr++ = *iptr++;
   return o;
 }
@@ -78,14 +77,32 @@ size_t strlen (const char *str)
   return char_ptr - str;
 }
 
-static void inline eth_write(size_t addr, uint64_t data)
+static void eth_write(size_t addr, uint64_t data)
 {
-  eth_base[addr >> 3] = data;
+  if ((addr < 0x8000) && !(addr&7))
+    {
+#ifdef VERBOSE      
+      printf("eth_write(%x,%x)\n", addr, data);
+#endif      
+      eth_base[addr >> 3] = data;
+    }
+  else
+    printf("eth_write(%x,%x) out of range\n", addr, data);
 }
 
-static uint64_t inline eth_read(size_t addr)
+static uint64_t eth_read(size_t addr)
 {
-  return eth_base[addr >> 3];
+  uint64_t retval = 0xDEADBEEF;
+  if ((addr < 0x8000) && !(addr&7))
+    {
+      retval = eth_base[addr >> 3];
+#ifdef VERBOSE      
+      printf("eth_read(%x) returned %x\n", addr, retval);
+#endif      
+    }
+  else
+    printf("eth_read(%x) out of range\n", addr);
+  return retval;
 }
 
 /* General Ethernet Definitions */
@@ -101,12 +118,12 @@ static uint64_t inline eth_read(size_t addr)
 #define ETH_FRAME_LEN	1514		/* Max. octets in frame sans FCS */
 
 extern uip_eth_addr mac_addr;
-static unsigned long sbrk_rused;
 
-inline void * sbrk(size_t len)
+void *sbrk(size_t len)
 {
-  char *rd = (char *)(sbrk_rused + 0x80000000);
-  sbrk_rused += ((len-1)|7)+1;
+  static unsigned long rused = 0;
+  char *rd = rused + (char *)get_ddr_base();
+  rused += ((len-1)|7)+1;
   return rd;
 }
 
@@ -146,7 +163,6 @@ static int copyin_pkt(void)
       // Do we need to read the packet at all ??
       uint16_t rxheader = alloc32[HEADER_OFFSET >> 2];
       int proto_type = ntohs(rxheader) & 0xFFFF;
-      write_led(proto_type);
       switch (proto_type)
           {
           case ETH_P_IP:
@@ -230,10 +246,31 @@ static void dumpregs(const char *msg)
 void external_interrupt(void)
 {
   int claim, handled = 0;
+#ifdef VERBOSE
+  printf("Hello external interrupt! "__TIMESTAMP__"\n");
+#endif  
   claim = plic[0x80001];
+  dumpregs("before");
   /* Check if there is Rx Data available */
   while (eth_read(RSR_OFFSET) & RSR_RECV_DONE_MASK)
-      copyin_pkt();
+    {
+#ifdef VERBOSE
+      printf("Ethernet interrupt\n");
+#endif  
+      int length = copyin_pkt();
+      handled = 1;
+    }
+  if (hid_check_read_irq())
+    {
+      int rslt = hid_read_irq();
+      printf("uart interrupt read %x (%c)\n", rslt, rslt);
+      handled = 1;
+    }
+  if (!handled)
+    {
+      printf("unhandled interrupt!\n");
+    }
+  dumpregs("after");
   plic[0x80001] = claim;
 }
     // Function for checksum calculation. From the RFC,
@@ -362,12 +399,10 @@ int eth_main(void) {
   uip_ipaddr_t addr;
   uint64_t lo = eth_read(MACLO_OFFSET);
   uint64_t hi = eth_read(MACHI_OFFSET) & MACHI_MACADDR_MASK;
-  // enable ints
   eth_write(MACHI_OFFSET, MACHI_IRQ_EN|hi);
-  sbrk_rused = 0;
   rxbuf = (inqueue_t *)sbrk(sizeof(inqueue_t)*queuelen);
   txbuf = (outqueue_t *)sbrk(sizeof(outqueue_t)*queuelen);
-  // maskarray = (uint64_t *)sbrk(sizeof_maskarray);
+  //  maskarray = (uint64_t *)sbrk(sizeof_maskarray);
   memset(maskarray, 0, sizeof_maskarray);
   
 #ifndef VERBOSE  
@@ -508,7 +543,7 @@ int eth_main(void) {
                     int16_t dport = ntohs(udp_hdr->uh_dport);
                     int16_t ulen = ntohs(udp_hdr->uh_ulen);
                     uint16_t peer_port = ntohs(udp_hdr->uh_sport);
-#if 1 // def VERBOSE                                              
+#ifdef VERBOSE                                              
                     printf("IP Proto = UDP, source port = %d, dest port = %d, length = %d\n",
                            ntohs(udp_hdr->uh_sport),
                            dport,

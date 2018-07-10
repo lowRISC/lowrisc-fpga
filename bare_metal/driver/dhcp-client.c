@@ -238,7 +238,7 @@ void dhcp_input(dhcp_t *dhcp, u_int8_t *mac, int *offcount, int *ackcount)
         printf("Unhandled DHCP opcode %d\n", code);
       }
   } while (code != MESSAGE_TYPE_END);
-  printf("DHCP process exited\n");
+  //  printf("DHCP process exited\n");
 }
 
 int my_inject(const void *buf, size_t siz)
