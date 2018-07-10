@@ -136,6 +136,9 @@ void dhcp_input(dhcp_t *dhcp, u_int8_t *mac, int *offcount, int *ackcount)
   uint32_t lease = 0;
   u_int8_t option = 0;
   uip_ipaddr_t req_ip, server_id, netmask, router, dns_id, ntp_id;
+  *domain = 0;
+  *hostname = 0;
+  *err = 0;
   if ((uint64_t)dhcp < 0x40000000 || (uint64_t)dhcp >= 0x88000000)
     {
       printf("dhcp internal error, %x\n", dhcp);
@@ -215,8 +218,8 @@ void dhcp_input(dhcp_t *dhcp, u_int8_t *mac, int *offcount, int *ackcount)
                 printf("Net mask address:  %d.%d.%d.%d\n", uip_ipaddr_to_quad(&netmask));
                 uip_setnetmask(&netmask);
                 printf("Lease time = %d\n", lease);
-                printf("domain = %s\n", domain);
-                printf("server = %s\n", hostname);
+                printf("domain = \"%s\"\n", domain);
+                printf("server = \"%s\"\n", hostname);
               }
             else
               printf("ACK SKIPPED\n");
@@ -256,13 +259,13 @@ void my_perror(char *msg)
  * Ethernet output handler - Fills appropriate bytes in ethernet header
  */
 static void
-ether_output(u_char *frame, u_int8_t *mac, int len)
+ether_output(u_char *frame, const u_int8_t *mac, int len, const u_int8_t *destmac)
 {
     int result;
     struct ether_header *eframe = (struct ether_header *)frame;
 
     memcpy(eframe->ether_shost, mac, ETHER_ADDR_LEN);
-    memset(eframe->ether_dhost, -1,  ETHER_ADDR_LEN);
+    memcpy(eframe->ether_dhost, destmac,  ETHER_ADDR_LEN);
     eframe->ether_type = __htons(ETHERTYPE_IP);
 
     len = len + sizeof(struct ether_header);
@@ -278,21 +281,25 @@ ether_output(u_char *frame, u_int8_t *mac, int len)
  * IP Output handler - Fills appropriate bytes in IP header
  */
 static void
-ip_output(struct ip *ip_header, int *len)
+ip_output(struct ip *ip_header, int *len, uint32_t srcaddr, uint32_t dstaddr)
 {
+  u_short nlen, nid;
+
     *len += sizeof(struct ip);
 
     ip_header->ip_hl = 5;
     ip_header->ip_v = IPVERSION;
     ip_header->ip_tos = 0x10;
-    ip_header->ip_len = __htons(*len);
-    ip_header->ip_id = __htons(0xffff);
+    nlen = __htons(*len);
+    nid = __htons(0xffff);
+    memcpy(&(ip_header->ip_len), &nlen, sizeof(u_short));
+    memcpy(&(ip_header->ip_id), &nid, sizeof(u_short));
     ip_header->ip_off = 0;
     ip_header->ip_ttl = 16;
     ip_header->ip_p = IPPROTO_UDP;
     ip_header->ip_sum = 0;
-    ip_header->ip_src.s_addr = 0;
-    ip_header->ip_dst.s_addr = 0xFFFFFFFF;
+    memcpy(&(ip_header->ip_src.s_addr), &srcaddr, sizeof(uint32_t));
+    memcpy(&(ip_header->ip_dst.s_addr), &dstaddr, sizeof(uint32_t));
 
     ip_header->ip_sum = in_cksum((unsigned short *) ip_header, sizeof(struct ip));
 }
@@ -301,14 +308,14 @@ ip_output(struct ip *ip_header, int *len)
  * UDP output - Fills appropriate bytes in UDP header
  */
 static void
-udp_output(struct udphdr *udp_header, int *len)
+udp_output(struct udphdr *udp_header, int *len, uint16_t client, uint16_t server)
 {
     if (*len & 1)
         *len += 1;
     *len += sizeof(struct udphdr);
 
-    udp_header->uh_sport = __htons(DHCP_CLIENT_PORT);
-    udp_header->uh_dport = __htons(DHCP_SERVER_PORT);
+    udp_header->uh_sport = __htons(client);
+    udp_header->uh_dport = __htons(server);
     udp_header->uh_ulen = __htons(*len);
     udp_header->uh_sum = 0;
 }
@@ -378,18 +385,20 @@ dhcp_discovery(u_int8_t *mac)
     struct udphdr *udp_header;
     struct ip *ip_header;
     dhcp_t *dhcp;
+    u_char broadcast[ETHER_ADDR_LEN];
 
     PRINT(VERBOSE_LEVEL_INFO, "Sending DHCP_DISCOVERY");
 
+    memset(broadcast, -1, ETHER_ADDR_LEN);
     ip_header = (struct ip *)(packet + sizeof(struct ether_header));
     udp_header = (struct udphdr *)(((char *)ip_header) + sizeof(struct ip));
     dhcp = (dhcp_t *)(((char *)udp_header) + sizeof(struct udphdr));
 
     len = fill_dhcp_discovery_options(dhcp);
     dhcp_output(dhcp, mac, &len);
-    udp_output(udp_header, &len);
-    ip_output(ip_header, &len);
-    ether_output(packet, mac, len);
+    udp_output(udp_header, &len, DHCP_CLIENT_PORT, DHCP_SERVER_PORT);
+    ip_output(ip_header, &len, 0, 0xFFFFFFFF);
+    ether_output(packet, mac, len, broadcast);
 
     return 0;
 }
@@ -425,23 +434,48 @@ dhcp_request(u_int8_t *mac, u_int32_t req_ip, u_int32_t server_id)
     struct udphdr *udp_header;
     struct ip *ip_header;
     dhcp_t *dhcp;
-
+    u_char broadcast[ETHER_ADDR_LEN];
+    
     PRINT(VERBOSE_LEVEL_INFO, "Sending DHCP_REQUEST");
 
+    memset(broadcast, -1, ETHER_ADDR_LEN);
     ip_header = (struct ip *)(packet + sizeof(struct ether_header));
     udp_header = (struct udphdr *)(((char *)ip_header) + sizeof(struct ip));
     dhcp = (dhcp_t *)(((char *)udp_header) + sizeof(struct udphdr));
 
     len = fill_dhcp_request_options(dhcp, req_ip, server_id);
     dhcp_output(dhcp, mac, &len);
-    udp_output(udp_header, &len);
-    ip_output(ip_header, &len);
-    ether_output(packet, mac, len);
+    udp_output(udp_header, &len, DHCP_CLIENT_PORT, DHCP_SERVER_PORT);
+    ip_output(ip_header, &len, 0, 0xFFFFFFFF);
+    ether_output(packet, mac, len, broadcast);
 
     return 0;
 }
 
-typedef void (*pcap_handler)(u_char *, const struct pcap_pkthdr *, const u_char *);
+/*
+ * Send Generic UDP packet
+ */
+int udp_send(const u_int8_t *mac, void *msg, int payload_size, uint16_t client, uint16_t server, uint32_t srcaddr, uint32_t dstaddr, const u_int8_t *destmac)
+{
+    int len = 0;
+    u_char packet[2048];
+    struct udphdr *udp_header;
+    struct ip *ip_header;
+    u_char *payload;
+
+    //    PRINT(VERBOSE_LEVEL_INFO, "Sending generic UDP");
+
+    ip_header = (struct ip *)(packet + sizeof(struct ether_header));
+    udp_header = (struct udphdr *)(((char *)ip_header) + sizeof(struct ip));
+    payload = (u_char *)(((char *)udp_header) + sizeof(struct udphdr));
+    memcpy(payload, msg, payload_size);
+    len = payload_size;
+    udp_output(udp_header, &len, client, server);
+    ip_output(ip_header, &len, srcaddr, dstaddr);
+    ether_output(packet, mac, len, destmac);
+
+    return 0;
+}
 
 int dhcp_main(u_int8_t mac[6])
 {

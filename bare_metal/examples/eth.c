@@ -131,12 +131,11 @@ void *sbrk(size_t len)
 #define PORT 8888   //The port on which to send data
 #define CHUNK_SIZE 1024
 
-void process_ip_packet(const u_char * , int);
+void process_ip_packet(const u_char *, int);
 void print_ip_packet(const u_char * , int);
-void print_tcp_packet(const u_char * , int );
-void process_udp_packet(const u_char * , int);
+void print_tcp_packet(const u_char * , int);
+void process_udp_packet(const u_char *, int, uint16_t, uint32_t, const u_char *);
 void PrintData (const u_char * , int);
-int raw_udp_main(void *, int, uint16_t);
 
 #define min(x,y) (x) < (y) ? (x) : (y)
 
@@ -205,7 +204,6 @@ void lite_queue(const void *buf, int length)
 enum {sizeof_maskarray=MAX_FILE_SIZE/CHUNK_SIZE/8};
 
 static int oldidx;
-static u_char peer_addr[6];
 static uint64_t maskarray[sizeof_maskarray/sizeof(uint64_t)];
 static const char *const regnam(int ix)
 {
@@ -419,8 +417,6 @@ int eth_main(void) {
 #endif
   uip_setethaddr(mac_addr);
 
-  memset(peer_addr, -1, sizeof(peer_addr));
-  
   printf("Enabling interrupts\n");
   old_mstatus = read_csr(mstatus);
   old_mie = read_csr(mie);
@@ -464,6 +460,8 @@ int eth_main(void) {
           {
           case ETH_P_IP:
             {
+              uint32_t peer_ip;
+              static u_char peer_addr[6];
               struct ethip_hdr {
                 struct uip_eth_hdr ethhdr;
                 /* IP header. */
@@ -478,7 +476,8 @@ int eth_main(void) {
                 uip_ipaddr_t srcipaddr, destipaddr;
                 uint8_t body[];
               } *BUF = ((struct ethip_hdr *)alloc32);
-              uip_ipaddr_t addr = BUF->srcipaddr;
+              memcpy(&peer_ip, &(BUF->srcipaddr), sizeof(uip_ipaddr_t));
+              memcpy(peer_addr, BUF->ethhdr.src.addr, 6);
 #ifdef VERBOSE
               printf("IP proto = %d\n", BUF->proto);
               printf("Source IP Address:  %d.%d.%d.%d\n", uip_ipaddr_to_quad(&(BUF->srcipaddr)));
@@ -551,19 +550,7 @@ int eth_main(void) {
 #endif                        
                     if (dport == PORT)
                       {
-                        if (memcmp(peer_addr, BUF->ethhdr.src.addr, 6))
-                          {
-                            memcpy(peer_addr, BUF->ethhdr.src.addr, 6);
-                            printf("Peer MAC address = %02x:%02x:%02x:%02x:%02x:%02x.\n",
-                                   peer_addr[0],
-                                   peer_addr[1],
-                                   peer_addr[2],
-                                   peer_addr[3],
-                                   peer_addr[4],
-                                   peer_addr[5]
-                                   );
-                          }
-                        process_udp_packet(udp_hdr->body, ulen-sizeof(struct udphdr));
+                        process_udp_packet(udp_hdr->body, ulen-sizeof(struct udphdr), peer_port, peer_ip, peer_addr);
                       }
                     else if (peer_port == DHCP_SERVER_PORT)
                       {
@@ -701,13 +688,15 @@ void boot(uint8_t *boot_file_buf, uint32_t fsize)
 
 static uint8_t *digest = NULL;
 
-void process_udp_packet(const u_char *data, int ulen)
+void process_udp_packet(const u_char *data, int ulen, uint16_t peer_port, uint32_t peer_ip, const u_char *peer_addr)
 {
   uint16_t idx;	
   static uint16_t maxidx;
   uint64_t siz = ((uint64_t)get_ddr_size());
   uint8_t *boot_file_buf = (uint8_t *)(get_ddr_base()) + siz - MAX_FILE_SIZE;
   uint8_t *boot_file_buf_end = (uint8_t *)(get_ddr_base()) + siz;
+  uint32_t srcaddr;
+  memcpy(&srcaddr, &uip_hostaddr, 4);
   if (ulen == CHUNK_SIZE+sizeof(uint16_t))
     {
       memcpy(&idx, data+CHUNK_SIZE, sizeof(uint16_t));
@@ -729,13 +718,13 @@ void process_udp_packet(const u_char *data, int ulen)
             digest = 0;
             printf("Clear blocks requested\n");
             memset(maskarray, 0, sizeof_maskarray);
-            raw_udp_main(maskarray, sizeof_maskarray, PORT);
+            udp_send(mac_addr.addr, maskarray, sizeof_maskarray, PORT, peer_port, srcaddr, peer_ip, peer_addr);
             break;
           }
         case 0xFFFD:
           {
             printf("Report blocks requested\n");
-            raw_udp_main(maskarray, sizeof_maskarray, PORT);
+            udp_send(mac_addr.addr, maskarray, sizeof_maskarray, PORT, peer_port, srcaddr, peer_ip, peer_addr);
             break;
           }
         case 0xFFFC:
@@ -743,7 +732,7 @@ void process_udp_packet(const u_char *data, int ulen)
             printf("Report md5 requested\n");
             if (!digest)
               digest = hash_buf(boot_file_buf, maxidx*CHUNK_SIZE);
-            raw_udp_main(digest, hash_length * 2 + 1, PORT);
+            udp_send(mac_addr.addr, digest, hash_length * 2 + 1, PORT, peer_port, srcaddr, peer_ip, peer_addr);
             break;
           }
         default:
@@ -770,11 +759,11 @@ void process_udp_packet(const u_char *data, int ulen)
     }
   else
     {
-      printf("UDP packet length %d sent to port %d\n", ulen, PORT);
+      printf("UDP packet length %d sent to port %d\n", ulen, peer_port);
 #ifdef UDP_DEBUG
       PrintData(data, ulen);
 #endif      
-      raw_udp_main((void *)data, ulen, PORT);
+      udp_send(mac_addr.addr, (void *)data, ulen, PORT, peer_port, srcaddr, peer_ip, peer_addr);
     }
 }
 
@@ -820,126 +809,6 @@ void PrintData (const u_char * data , int Size)
     }
 }
 #endif
-
-    // ----rawudp.c------
-
-/*
-**************************************************************************
-Function: udp_sum_calc()
-Description: Calculate UDP checksum
-***************************************************************************
-*/
-
-uint16_t udp_sum_calc(uint16_t len_udp, uint16_t src_addr[],uint16_t dest_addr[], int padding, uint16_t buff[])
-{
-  int i;
-  uint16_t prot_udp=17;
-  uint16_t padd=0;
-  uint16_t word16;
-  uint32_t sum;	
-	
-  // Find out if the length of data is even or odd number. If odd,
-  // add a padding byte = 0 at the end of packet
-  if (padding&1==1){
-    padd=1;
-    buff[len_udp]=0;
-  }
-  
-  //initialize sum to zero
-  sum=0;
-  
-  // make 16 bit words out of every two adjacent 8 bit words and 
-  // calculate the sum of all 16 vit words
-  for (i=0;i<len_udp+padd;i=i+2){
-    word16 =((buff[i]<<8)&0xFF00)+(buff[i+1]&0xFF);
-    sum = sum + (unsigned long)word16;
-  }	
-  // add the UDP pseudo header which contains the IP source and destinationn addresses
-  for (i=0;i<4;i=i+2){
-    word16 =((src_addr[i]<<8)&0xFF00)+(src_addr[i+1]&0xFF);
-    sum=sum+word16;	
-  }
-  for (i=0;i<4;i=i+2){
-    word16 =((dest_addr[i]<<8)&0xFF00)+(dest_addr[i+1]&0xFF);
-		sum=sum+word16; 	
-  }
-  // the protocol number and the length of the UDP packet
-  sum = sum + prot_udp + len_udp;
-  
-  // keep only the last 16 bits of the 32 bit calculated sum and add the carries
-  while (sum>>16)
-    sum = (sum & 0xFFFF)+(sum >> 16);
-  
-  // Take the one's complement of sum
-  sum = ~sum;
-
-  return ((uint16_t) sum);
-}
-
-    // Source IP, source port, target IP, target port from the command line arguments
-
-int raw_udp_main(void *msg, int payload_size, uint16_t peer_port)
-    {
-      uip_ipaddr_t src_addr, dst_addr;
-      static uint8_t raw_udp[1536];
-      static uint16_t idcnt = 1000;
-      struct ethhdr *eth = (struct ethhdr *)raw_udp;
-      struct iphdr *ip = (struct iphdr *) (raw_udp + sizeof(struct ethhdr));
-      struct udphdr *udp = (struct udphdr *)
-	(raw_udp + sizeof(struct ethhdr) + sizeof(struct iphdr));
-      char *payload = 
-	(raw_udp + sizeof(struct ethhdr) +
-	 sizeof(struct iphdr) +
-	 sizeof(struct udphdr));
-      memcpy(payload, msg, payload_size);
-    
-      // The destination IP address
-
-      uip_ipaddr(&dst_addr, 192,168,0,53);
-      memcpy(&(ip->daddr), &dst_addr, 4);
-
-      // Fill in the ethernet header
-      memcpy(eth->h_dest, peer_addr, 6); // dest address
-      memcpy(eth->h_source, mac_addr.addr, 6); // our address
-      eth->h_proto = 8;
-      // Fabricate the IP header or we can use the
-      // standard header structures but assign our own values.
-
-    ip->ihl = 5;
-    ip->version = 4;
-    ip->tos = 0; // Low delay
-    ip->tot_len = __htons(sizeof(struct iphdr) + sizeof(struct udphdr) + payload_size);
-    ip->id = htons(idcnt);
-    idcnt++;
-    ip->frag_off = __htons(0x4000);
-    ip->ttl = 64; // hops
-    ip->protocol = IPPROTO_UDP; // UDP
-
-    // Source IP address, can use spoofed address here!!!
-
-    uip_ipaddr(&src_addr, 192,168,0,51);
-    memcpy(&(ip->saddr), &src_addr, 4);
-
-    // Fabricate the UDP header. Source port number, redundant
-
-    udp->uh_sport = __htons(PORT);
-
-    // Destination port number
-
-    udp->uh_dport = htons(peer_port);
-    udp->uh_ulen = __htons(sizeof(struct udphdr) + payload_size);
-    udp->uh_sum = udp_sum_calc(payload_size, (uint16_t *)&(ip->saddr), (uint16_t *)&(ip->daddr), payload_size & 1 ? 0 : 1, (uint16_t *)payload);
-    udp->uh_sum = 0;
-
-    // Calculate the checksum for integrity
-
-    ip->check = csum(raw_udp, sizeof(struct iphdr) + sizeof(struct udphdr) + payload_size);
-    ip->check = 0; // hack
-    
-    lite_queue(raw_udp, sizeof(struct ethhdr) + sizeof(struct iphdr) + sizeof(struct udphdr) + payload_size);
-    return 0;
-
-    }
 
 #define HELLO "Hello LowRISC! "__TIMESTAMP__"\n"
 

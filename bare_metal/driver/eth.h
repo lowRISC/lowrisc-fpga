@@ -293,5 +293,6 @@ extern uip_ipaddr_t uip_hostaddr, uip_draddr, uip_netmask;
 int dhcp_main(u_int8_t mac[6]);
 void lite_queue(const void *buf, int length);
 void dhcp_input(dhcp_t *dhcp, u_int8_t mac[6], int *offcount, int *ackcount);
+int udp_send(const u_int8_t *mac, void *msg, int payload_size, uint16_t client, uint16_t server, uint32_t srcaddr, uint32_t dstaddr, const u_int8_t *destmac);
 
 #endif
