@@ -53,17 +53,6 @@ typedef enum {
     VERBOSE_LEVEL_DEBUG,
 } verbose_level_t;
 
-#define PRINT(verbose_level, fmt, args...)                              \
-do{                                                                     \
-    if( verbose_level <= program_verbose_level ) {                      \
-        if ( verbose_level == VERBOSE_LEVEL_DEBUG ) {                   \
-            printf("%s:%d:%s::",    __FILE__, __LINE__, __FUNCTION__);  \
-        }                                                               \
-        printf(fmt, ##args);                                            \
-        printf("\n");                                                   \
-    }                                                                   \
-}while(0)
-
 #define DHCP_MAGIC_COOKIE   0x63825363
 
 const verbose_level_t program_verbose_level = VERBOSE_LEVEL_DEBUG;
@@ -272,9 +261,6 @@ ether_output(u_char *frame, const u_int8_t *mac, int len, const u_int8_t *destma
 
     /* Send the packet on wire */
     result = my_inject(frame, len);
-    PRINT(VERBOSE_LEVEL_DEBUG, "Send %d bytes\n", result);
-    if (result <= 0)
-        my_perror("ERROR:");
 }
 
 /*
@@ -387,7 +373,7 @@ dhcp_discovery(u_int8_t *mac)
     dhcp_t *dhcp;
     u_char broadcast[ETHER_ADDR_LEN];
 
-    PRINT(VERBOSE_LEVEL_INFO, "Sending DHCP_DISCOVERY");
+    printf("Sending DHCP_DISCOVERY\n");
 
     memset(broadcast, -1, ETHER_ADDR_LEN);
     ip_header = (struct ip *)(packet + sizeof(struct ether_header));
@@ -436,7 +422,7 @@ dhcp_request(u_int8_t *mac, u_int32_t req_ip, u_int32_t server_id)
     dhcp_t *dhcp;
     u_char broadcast[ETHER_ADDR_LEN];
     
-    PRINT(VERBOSE_LEVEL_INFO, "Sending DHCP_REQUEST");
+    printf("Sending DHCP_REQUEST\n");
 
     memset(broadcast, -1, ETHER_ADDR_LEN);
     ip_header = (struct ip *)(packet + sizeof(struct ether_header));
@@ -463,8 +449,6 @@ int udp_send(const u_int8_t *mac, void *msg, int payload_size, uint16_t client, 
     struct ip *ip_header;
     u_char *payload;
 
-    //    PRINT(VERBOSE_LEVEL_INFO, "Sending generic UDP");
-
     ip_header = (struct ip *)(packet + sizeof(struct ether_header));
     udp_header = (struct udphdr *)(((char *)ip_header) + sizeof(struct ip));
     payload = (u_char *)(((char *)udp_header) + sizeof(struct udphdr));
@@ -483,20 +467,20 @@ int dhcp_main(u_int8_t mac[6])
     char errbuf[PCAP_ERRBUF_SIZE];
     char *dev = "eth0";
 
-    PRINT(VERBOSE_LEVEL_INFO, "%s MAC : %02X:%02X:%02X:%02X:%02X:%02X",
+    printf("%s MAC : %02X:%02X:%02X:%02X:%02X:%02X\n",
           dev, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     
     /* Send DHCP DISCOVERY packet */
     result = dhcp_discovery(mac);
     if (result)
     {
-        PRINT(VERBOSE_LEVEL_ERROR, "Couldn't send DHCP DISCOVERY on device %s: %s", dev, errbuf);
+        printf("Couldn't send DHCP DISCOVERY on device %s: %s\n", dev, errbuf);
     }
 
     else
       {
         ip = 0;
-        PRINT(VERBOSE_LEVEL_INFO, "Waiting for DHCP_OFFER");
+        printf("Waiting for DHCP_OFFER\n");
       }
     return result;
 }

@@ -46,8 +46,7 @@
 #include "mini-printf.h"
 #include "hid.h"
 
-static unsigned int
-itoa(int value, unsigned int radix, unsigned int uppercase, unsigned int unsig,
+static unsigned int ltoa(int value, unsigned long radix, unsigned int uppercase, unsigned int unsig,
 	 char *buffer, unsigned int zero_pad)
 {
 	char	*pbuffer = buffer;
@@ -122,6 +121,7 @@ vsnprintf(char *buffer, size_t buffer_len, const char *fmt, va_list va)
 	}
 
 	while ((ch=*(fmt++))) {
+          int islong = 0;
 		if ((unsigned int)((pbuffer - buffer) + 1) >= buffer_len)
 			break;
 		if (ch!='%')
@@ -149,14 +149,20 @@ vsnprintf(char *buffer, size_t buffer_len, const char *fmt, va_list va)
 
 				case 'u':
 				case 'd':
-					len = itoa(va_arg(va, unsigned int), 10, 0, (ch=='u'), bf, zero_pad);
+                                  if (islong) len = ltoa(va_arg(va, unsigned long), 10, 0, (ch=='u'), bf, zero_pad);
+                                  else
+					len = ltoa(va_arg(va, unsigned int), 10, 0, (ch=='u'), bf, zero_pad);
 					_puts(bf, len);
+                                        islong = 0;
 					break;
 
 				case 'x':
 				case 'X':
-					len = itoa(va_arg(va, unsigned int), 16, (ch=='X'), 1, bf, zero_pad);
+                                  if (islong) len = ltoa(va_arg(va, unsigned long), 16, (ch=='X'), 1, bf, zero_pad);
+                                  else
+					len = ltoa(va_arg(va, unsigned int), 16, (ch=='X'), 1, bf, zero_pad);
 					_puts(bf, len);
+                                        islong = 0;
 					break;
 
 				case 'c' :
@@ -167,7 +173,8 @@ vsnprintf(char *buffer, size_t buffer_len, const char *fmt, va_list va)
                                         ptr = (char *)(va_arg(va, size_t) & 0xFFFFFFFF); // a horrible hack
 					_puts(ptr, strlen(ptr));
 					break;
-
+                                case 'l' :
+                                        islong = 1;
 				default:
 					_putc(ch);
 					break;

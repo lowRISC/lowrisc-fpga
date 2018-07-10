@@ -130,6 +130,7 @@ _start:
 trap_entry:
   addi sp, sp, -272
 
+  SREG x0, 0*REGBYTES(sp)
   SREG x1, 1*REGBYTES(sp)
   SREG x2, 2*REGBYTES(sp)
   SREG x3, 3*REGBYTES(sp)

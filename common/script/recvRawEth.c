@@ -237,6 +237,7 @@ int main(int argc, char *argv[])
   
   while (incomplete)
     {
+      int sent = 0;
       for (idx = 0; idx < chunks; ++idx)
 	{
 	  if (!(maskarray[idx/64] & (1ULL << (idx&63))))
@@ -244,7 +245,10 @@ int main(int argc, char *argv[])
 	      memcpy(message, m+idx*CHUNK_SIZE, CHUNK_SIZE);
 	      //send the message
 	      send_message(s, idx);
-              usleep(500);
+              if (sent++ % 4 == 0)
+                {
+                  usleep(500);
+                }
 	    }
 	}
       do {

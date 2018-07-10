@@ -24,20 +24,20 @@ const uip_ipaddr_t uip_all_zeroes_addr = { { 0x0, /* rest is 0 */ } };
 
 uip_lladdr_t uip_lladdr;
 
-enum {queuelen = 1024};
+enum {queuelen = 1024, max_packet = 1536};
 
 int rxhead, rxtail, txhead, txtail;
 
 typedef struct inqueue_t {
-  void *alloc;
-  int rplr;
+  uint64_t alloc[max_packet];
+  uint64_t len;
 } inqueue_t;
 
 inqueue_t *rxbuf;
 
 typedef struct outqueue_t {
-  void *alloc;
-  int len;
+  uint64_t alloc[max_packet];
+  uint64_t len;
 } outqueue_t;
 
 outqueue_t *txbuf;
@@ -47,19 +47,19 @@ outqueue_t *txbuf;
 
 inline void *memcpy(void *o, const void *i, size_t n)
 {
-  uint8_t *optr = o;
-  const uint8_t *iptr = i;
+  uint8_t *optr = (uint8_t *)((size_t)o & 0xFFFFFFFF);
+  const uint8_t *iptr = (const uint8_t *)((size_t)i & 0xFFFFFFFF);
 
-  if ((uint64_t)o < 0x40000000 || (uint64_t)o >= 0x88000000 || (uint64_t)i < 0x40000000 || (uint64_t)i >= 0x88000000)
+  if ((uint64_t)optr < 0x40000000 || (uint64_t)optr >= 0x88000000 || (uint64_t)iptr < 0x40000000 || (uint64_t)iptr >= 0x88000000)
     {
-      printf("memcpy internal error, %x <= %x\n", o, i);
+      printf("memcpy internal error, %x <= %x\n", optr, iptr);
       for(;;)
         ;
     }
 
   //  printf("memcpy(%x,%x,%x);\n", o, i, n);
   while (n--) *optr++ = *iptr++;
-  return o;
+  return optr;
 }
 
 size_t strlen (const char *str)
@@ -141,7 +141,6 @@ void PrintData (const u_char * , int);
 
 int eth_discard = 0;
 void process_my_packet(int size, const u_char *buffer);
-void *sbrk(size_t len);
 
 static int copyin_pkt(void)
 {
@@ -149,15 +148,14 @@ static int copyin_pkt(void)
   int rsr = eth_read(RSR_OFFSET);
   int buf = rsr & RSR_RECV_FIRST_MASK;
   int errs = eth_read(RBAD_OFFSET);
-  int rplr = eth_read(RPLR_OFFSET+((buf&7)<<3));
-  int length = rplr & RPLR_LENGTH_MASK;
+  int len = eth_read(RPLR_OFFSET+((buf&7)<<3)) & RPLR_LENGTH_MASK;
 #ifdef VERBOSE
-      printf("length = %d (buf = %x)\n", length, buf);
+      printf("length = %d (buf = %x)\n", len, buf);
 #endif      
-      if ((length >= 14) && ((0x101<<(buf&7)) & ~errs) && !eth_discard)
+      if ((len >= 14) && (len <= max_packet) && ((0x101<<(buf&7)) & ~errs) && !eth_discard)
     {
       int rnd, start = (RXBUFF_OFFSET>>3) + ((buf&7)<<8);
-      uint64_t *alloc;
+      uint64_t *alloc = rxbuf[rxhead].alloc;
       uint32_t *alloc32 = (uint32_t *)(eth_base+start);
       // Do we need to read the packet at all ??
       uint16_t rxheader = alloc32[HEADER_OFFSET >> 2];
@@ -166,14 +164,12 @@ static int copyin_pkt(void)
           {
           case ETH_P_IP:
           case ETH_P_ARP:
-            rnd = ((length-1|7)+1); /* round to a multiple of 8 */
-            alloc = sbrk(rnd);
+            rnd = ((len-1|7)+1); /* round to a multiple of 8 */
             for (i = 0; i < rnd/8; i++)
               {
                 alloc[i] = eth_base[start+i];
               }
-            rxbuf[rxhead].rplr = rplr;
-            rxbuf[rxhead].alloc = alloc;
+            rxbuf[rxhead].len = len;
             rxhead = (rxhead + 1) % queuelen;
             break;            
           case ETH_P_IPV6:
@@ -181,16 +177,14 @@ static int copyin_pkt(void)
           }
     }
   eth_write(RSR_OFFSET, buf+1); /* acknowledge */
-  return length;
+  return len;
 }
 
 void lite_queue(const void *buf, int length)
 {
   int i, rslt;
   int rnd = ((length-1|7)+1);
-  uint64_t *alloc = sbrk(rnd);
-  memcpy(alloc, buf, length);
-  txbuf[txhead].alloc = alloc;
+  memcpy(txbuf[txhead].alloc, buf, length);
   txbuf[txhead].len = length;
   txhead = (txhead+1) % queuelen;
 }
@@ -248,6 +242,7 @@ void external_interrupt(void)
   printf("Hello external interrupt! "__TIMESTAMP__"\n");
 #endif  
   claim = plic[0x80001];
+  eth_write(MACHI_OFFSET, eth_read(MACHI_OFFSET)&~MACHI_IRQ_EN);
   dumpregs("before");
   /* Check if there is Rx Data available */
   while (eth_read(RSR_OFFSET) & RSR_RECV_DONE_MASK)
@@ -270,6 +265,7 @@ void external_interrupt(void)
     }
   dumpregs("after");
   plic[0x80001] = claim;
+  eth_write(MACHI_OFFSET, eth_read(MACHI_OFFSET)|MACHI_IRQ_EN);
 }
     // Function for checksum calculation. From the RFC,
     // the checksum algorithm is:
@@ -297,7 +293,7 @@ static uintptr_t old_mstatus, old_mie;
 #define rand32() ((unsigned int) rand() | ( (unsigned int) rand() << 16))
 uint64_t rand64(void) { uint64_t low = rand32(), high = rand32(); return low | (high << 32); }
 
-static uint64_t random_pkt[1536];
+static uint64_t random_pkt[max_packet/sizeof(uint64_t)];
 
 void loopback_test(int loops, int sim)
   {
@@ -400,6 +396,7 @@ int eth_main(void) {
   eth_write(MACHI_OFFSET, MACHI_IRQ_EN|hi);
   rxbuf = (inqueue_t *)sbrk(sizeof(inqueue_t)*queuelen);
   txbuf = (outqueue_t *)sbrk(sizeof(outqueue_t)*queuelen);
+  
   //  maskarray = (uint64_t *)sbrk(sizeof_maskarray);
   memset(maskarray, 0, sizeof_maskarray);
   
@@ -448,8 +445,7 @@ int eth_main(void) {
       {
 	int i, bad = 0;
         uint32_t *alloc32 = (uint32_t *)(rxbuf[rxtail].alloc); // legacy size to avoid tweaking header offset
-        int rplr = rxbuf[rxtail].rplr;
-        int length, xlength = rplr & RPLR_LENGTH_MASK;
+        int length, xlength = rxbuf[rxtail].len;
         uint16_t rxheader = alloc32[HEADER_OFFSET >> 2];
         int proto_type = ntohs(rxheader) & 0xFFFF;
 #ifdef VERBOSE
@@ -636,7 +632,9 @@ int eth_main(void) {
                }
              else
                {
-                 printf("ARP  %d.%d.%d.%d, my addr =  %d.%d.%d.%d\n", uip_ipaddr_to_quad(&BUF->dipaddr), uip_ipaddr_to_quad(&uip_hostaddr));
+#ifdef VERBOSE                 
+                 printf("Discarded ARP  %d.%d.%d.%d, my addr =  %d.%d.%d.%d\n", uip_ipaddr_to_quad(&BUF->dipaddr), uip_ipaddr_to_quad(&uip_hostaddr));
+#endif                 
                }
             }
             break;
