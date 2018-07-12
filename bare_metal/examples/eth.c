@@ -77,31 +77,39 @@ size_t strlen (const char *str)
   return char_ptr - str;
 }
 
-static void eth_write(size_t addr, uint64_t data)
+static inline void eth_write(size_t addr, uint64_t data)
 {
+#ifdef DEBUG
   if ((addr < 0x8000) && !(addr&7))
+#endif    
     {
-#ifdef VERBOSE      
+#ifdef VERBOSE
       printf("eth_write(%x,%x)\n", addr, data);
 #endif      
       eth_base[addr >> 3] = data;
     }
+#ifdef DEBUG
   else
     printf("eth_write(%x,%x) out of range\n", addr, data);
+#endif  
 }
 
-static uint64_t eth_read(size_t addr)
+static inline uint64_t eth_read(size_t addr)
 {
   uint64_t retval = 0xDEADBEEF;
+#ifdef DEBUG
   if ((addr < 0x8000) && !(addr&7))
+#endif  
     {
       retval = eth_base[addr >> 3];
-#ifdef VERBOSE      
+#ifdef VERBOSE
       printf("eth_read(%x) returned %x\n", addr, retval);
 #endif      
     }
+#ifdef DEBUG  
   else
     printf("eth_read(%x) out of range\n", addr);
+#endif  
   return retval;
 }
 
@@ -242,7 +250,7 @@ void external_interrupt(void)
   printf("Hello external interrupt! "__TIMESTAMP__"\n");
 #endif  
   claim = plic[0x80001];
-  eth_write(MACHI_OFFSET, eth_read(MACHI_OFFSET)&~MACHI_IRQ_EN);
+  //  eth_write(MACHI_OFFSET, eth_read(MACHI_OFFSET)&~MACHI_IRQ_EN);
   dumpregs("before");
   /* Check if there is Rx Data available */
   while (eth_read(RSR_OFFSET) & RSR_RECV_DONE_MASK)
@@ -265,7 +273,7 @@ void external_interrupt(void)
     }
   dumpregs("after");
   plic[0x80001] = claim;
-  eth_write(MACHI_OFFSET, eth_read(MACHI_OFFSET)|MACHI_IRQ_EN);
+  //  eth_write(MACHI_OFFSET, eth_read(MACHI_OFFSET)|MACHI_IRQ_EN);
 }
     // Function for checksum calculation. From the RFC,
     // the checksum algorithm is:
@@ -413,19 +421,22 @@ int eth_main(void) {
          );
 #endif
   uip_setethaddr(mac_addr);
-
+#ifdef INTERRUPT_MODE
   printf("Enabling interrupts\n");
   old_mstatus = read_csr(mstatus);
   old_mie = read_csr(mie);
   set_csr(mstatus, MSTATUS_MIE|MSTATUS_HIE);
   set_csr(mie, ~(1 << IRQ_M_TIMER));
-#if 0
+
   printf("Enabling UART interrupt\n");
   hid_enable_read_irq();
 #endif
   write_led(-1);
   dhcp_main(mac_addr.addr);
   do {
+#ifndef INTERRUPT_MODE
+    while (eth_read(RSR_OFFSET) & RSR_RECV_DONE_MASK) copyin_pkt();
+#endif
     if ((txhead != txtail) && (TPLR_BUSY_MASK & ~eth_read(TPLR_OFFSET)))
       {
         uint64_t *alloc = txbuf[txtail].alloc;
@@ -441,6 +452,9 @@ int eth_main(void) {
         eth_write(TPLR_OFFSET,length);
         txtail = (txtail + 1) % queuelen;
       }
+#ifndef INTERRUPT_MODE
+    while (eth_read(RSR_OFFSET) & RSR_RECV_DONE_MASK) copyin_pkt();
+#endif
     if (rxhead != rxtail)
       {
 	int i, bad = 0;
