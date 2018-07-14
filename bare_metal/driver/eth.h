@@ -81,6 +81,8 @@
                               uip_lladdr.addr[4] = eaddr.addr[4];\
                               uip_lladdr.addr[5] = eaddr.addr[5];} while(0)
 
+enum {queuelen = 1024, max_packet = 1536};
+
 enum
   {
     IPPROTO_IP = 0,
@@ -288,7 +290,20 @@ typedef struct dhcp
     u_int8_t    bp_options[0];
 } dhcp_t;
 
+typedef struct inqueue_t {
+  uint64_t alloc[max_packet];
+  uint64_t len;
+} inqueue_t;
+
+typedef struct outqueue_t {
+  uint64_t alloc[max_packet];
+  uint64_t len;
+} outqueue_t;
+
 extern uip_ipaddr_t uip_hostaddr, uip_draddr, uip_netmask;
+extern volatile int rxhead, rxtail, txhead, txtail;
+extern inqueue_t *rxbuf;
+extern outqueue_t *txbuf;
 
 int dhcp_main(u_int8_t mac[6]);
 void lite_queue(const void *buf, int length);

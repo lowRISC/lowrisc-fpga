@@ -15,8 +15,6 @@
 #include <string.h>
 #include "sdhci-minion-hash-md5.h"
 
-uip_ipaddr_t uip_hostaddr, uip_draddr, uip_netmask;
-
 const uip_ipaddr_t uip_broadcast_addr =
   { { 0xff, 0xff, 0xff, 0xff } };
 
@@ -24,58 +22,8 @@ const uip_ipaddr_t uip_all_zeroes_addr = { { 0x0, /* rest is 0 */ } };
 
 uip_lladdr_t uip_lladdr;
 
-enum {queuelen = 1024, max_packet = 1536};
-
-int rxhead, rxtail, txhead, txtail;
-
-typedef struct inqueue_t {
-  uint64_t alloc[max_packet];
-  uint64_t len;
-} inqueue_t;
-
-inqueue_t *rxbuf;
-
-typedef struct outqueue_t {
-  uint64_t alloc[max_packet];
-  uint64_t len;
-} outqueue_t;
-
-outqueue_t *txbuf;
-
 //#define VERBOSE
 //#define UDP_DEBUG
-
-inline void *memcpy(void *o, const void *i, size_t n)
-{
-  uint8_t *optr = (uint8_t *)((size_t)o & 0xFFFFFFFF);
-  const uint8_t *iptr = (const uint8_t *)((size_t)i & 0xFFFFFFFF);
-
-  if ((uint64_t)optr < 0x40000000 || (uint64_t)optr >= 0x88000000 || (uint64_t)iptr < 0x40000000 || (uint64_t)iptr >= 0x88000000)
-    {
-      printf("memcpy internal error, %x <= %x\n", optr, iptr);
-      for(;;)
-        ;
-    }
-
-  //  printf("memcpy(%x,%x,%x);\n", o, i, n);
-  while (n--) *optr++ = *iptr++;
-  return optr;
-}
-
-size_t strlen (const char *str)
-{
-  const char *char_ptr = str;
-
-  if ((uint64_t)str < 0x40000000 || (uint64_t)str >= 0x88000000)
-    {
-      printf("strlen internal error, %x\n", str);
-      for(;;)
-        ;
-    }
-  while (*char_ptr)
-    ++char_ptr;
-  return char_ptr - str;
-}
 
 static inline void eth_write(size_t addr, uint64_t data)
 {
@@ -186,15 +134,6 @@ static int copyin_pkt(void)
     }
   eth_write(RSR_OFFSET, buf+1); /* acknowledge */
   return len;
-}
-
-void lite_queue(const void *buf, int length)
-{
-  int i, rslt;
-  int rnd = ((length-1|7)+1);
-  memcpy(txbuf[txhead].alloc, buf, length);
-  txbuf[txhead].len = length;
-  txhead = (txhead+1) % queuelen;
 }
 
 // max size of file image is 10M

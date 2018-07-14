@@ -111,6 +111,15 @@ in_cksum(unsigned short *addr, int len)
     return (answer);
 }
 
+void lite_queue(const void *buf, int length)
+{
+  int i, rslt;
+  int rnd = ((length-1|7)+1);
+  memcpy(txbuf[txhead].alloc, buf, length);
+  txbuf[txhead].len = length;
+  txhead = (txhead+1) % queuelen;
+}
+
 /*
  * This function will be called for any incoming DHCP responses
  */

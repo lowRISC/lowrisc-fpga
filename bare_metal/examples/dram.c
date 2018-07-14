@@ -609,7 +609,7 @@ int testrange(void volatile *aligned, size_t bufsize, ul loops, int narrow) {
     size_t maxbytes = -1; /* addressable memory, in bytes */
     size_t maxmb = (maxbytes >> 20) + 1; /* addressable memory, in MB */
     int device_specified = 0;
-    printf("test range is 0x%x to 0x%x\n", aligned, aligned+bufsize-1);
+    printf("test range is 0x%p to 0x%p\n", aligned, aligned+bufsize-1);
     
     halflen = bufsize / 2;
     count = halflen / sizeof(ul);
@@ -652,16 +652,17 @@ int main()
   //  enum {range=2048};  
   //  enum {range=4096};  
   //  enum {range=8192};  
-  enum {range=16384};  
-  //    enum {range=65536};
-  //    enum {range=262144};
+  //  enum {range=16384};  
+  //  enum {range=65536};
+  //  enum {range=262144};
   //  enum {range=1048576};
+    enum {range=1<<30};
     hid_send_string("\nBare metal DRAM test\n");
     printf("memtester version " __version__ " (%d-bit)\n", UL_LEN);
     printf("Copyright (C) 2001-2012 Charles Cazabon.\n");
     printf("Licensed under the GNU General Public License version 2 (only).\n");
     printf("\n");
-    testrange((void volatile *) (eth_base_addr+RXBUFF_OFFSET), range, 1, 1);
+    testrange((void volatile *) (ddr_base_addr), range, 1, 1);
 }
 
 void external_interrupt(void)
