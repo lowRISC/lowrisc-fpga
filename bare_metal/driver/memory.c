@@ -59,6 +59,11 @@ void write_led(uint32_t data)
   sd_base[15] = data;
 }
 
+int get_sw(void)
+{
+  return sd_base[31];
+}
+
 void *memcpy(void *o, const void *i, size_t n)
 {
   uint8_t *optr = (uint8_t *)((size_t)o & 0xFFFFFFFF);

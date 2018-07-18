@@ -242,12 +242,6 @@ void dhcp_input(dhcp_t *dhcp, u_int8_t *mac, int *offcount, int *ackcount)
   //  printf("DHCP process exited\n");
 }
 
-int my_inject(const void *buf, size_t siz)
-{
-  lite_queue(buf, siz);
-  return siz;
-}
-
 void my_perror(char *msg)
 {
   printf("perror(%s)\n", msg);
@@ -269,7 +263,7 @@ ether_output(u_char *frame, const u_int8_t *mac, int len, const u_int8_t *destma
     len = len + sizeof(struct ether_header);
 
     /* Send the packet on wire */
-    result = my_inject(frame, len);
+    lite_queue(frame, len);
 }
 
 /*

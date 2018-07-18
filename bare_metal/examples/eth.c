@@ -1,5 +1,7 @@
 // An ethernet loader program
-//#define VERBOSE
+// #define VERBOSE
+#define INTERRUPT_MODE
+
 #include "encoding.h"
 #include "bits.h"
 #include "elfriscv.h"
@@ -31,7 +33,7 @@ static inline void eth_write(size_t addr, uint64_t data)
   if ((addr < 0x8000) && !(addr&7))
 #endif    
     {
-#ifdef VERBOSE
+#ifdef VERBOSE2
       printf("eth_write(%x,%x)\n", addr, data);
 #endif      
       eth_base[addr >> 3] = data;
@@ -50,7 +52,7 @@ static inline uint64_t eth_read(size_t addr)
 #endif  
     {
       retval = eth_base[addr >> 3];
-#ifdef VERBOSE
+#ifdef VERBOSE2
       printf("eth_read(%x) returned %x\n", addr, retval);
 #endif      
     }
@@ -98,17 +100,28 @@ void PrintData (const u_char * , int);
 int eth_discard = 0;
 void process_my_packet(int size, const u_char *buffer);
 
+static char *proto2txt(int proto)
+{
+  static char txt[20];
+  switch(proto)
+    {
+    case ETH_P_IP: return "IP";
+    case ETH_P_ARP: return "ARP";
+    case ETH_P_IPV6: return "IP6";
+    default:
+      sprintf(txt, "0x%x", proto);
+      return txt;
+    }
+}
+
 static int copyin_pkt(void)
 {
-  int i, last;
+  int i, last, needed = 1;
   int rsr = eth_read(RSR_OFFSET);
   int buf = rsr & RSR_RECV_FIRST_MASK;
   int errs = eth_read(RBAD_OFFSET);
   int len = eth_read(RPLR_OFFSET+((buf&7)<<3)) & RPLR_LENGTH_MASK;
-#ifdef VERBOSE
-      printf("length = %d (buf = %x)\n", len, buf);
-#endif      
-      if ((len >= 14) && (len <= max_packet) && ((0x101<<(buf&7)) & ~errs) && !eth_discard)
+  if ((len >= 14) && (len <= max_packet) && ((0x101<<(buf&7)) & ~errs) && !eth_discard)
     {
       int rnd, start = (RXBUFF_OFFSET>>3) + ((buf&7)<<8);
       uint64_t *alloc = rxbuf[rxhead].alloc;
@@ -116,20 +129,106 @@ static int copyin_pkt(void)
       // Do we need to read the packet at all ??
       uint16_t rxheader = alloc32[HEADER_OFFSET >> 2];
       int proto_type = ntohs(rxheader) & 0xFFFF;
+      printf("length = %d, proto = %s, (buf = %x)\n", len, proto2txt(proto_type), buf);
       switch (proto_type)
           {
           case ETH_P_IP:
+            {
+              uint32_t peer_ip;
+              static u_char peer_addr[6];
+              struct ethip_hdr {
+                struct uip_eth_hdr ethhdr;
+                /* IP header. */
+                uint8_t vhl,
+                  tos,
+                  len[2],
+                  ipid[2],
+                  ipoffset[2],
+                  ttl,
+                  proto;
+                uint16_t ipchksum;
+                uip_ipaddr_t srcipaddr, destipaddr;
+                uint8_t body[];
+              } *BUF = ((struct ethip_hdr *)alloc32);
+              memcpy(&peer_ip, &(BUF->srcipaddr), sizeof(uip_ipaddr_t));
+              memcpy(peer_addr, BUF->ethhdr.src.addr, 6);
+              switch (BUF->proto)
+                {
+                case IPPROTO_ICMP:
+                  {
+                    struct icmphdr
+                    {
+                      uint8_t type;		/* message type */
+                      uint8_t code;		/* type sub-code */
+                      uint16_t checksum;
+                      uint16_t	id;
+                      uint16_t	sequence;
+                      uint64_t	timestamp;	/* gateway address */
+                      uint8_t body[];
+                    } *icmp_hdr = (struct icmphdr *)&(BUF->body);
+                  if (uip_ipaddr_cmp(&BUF->destipaddr, &uip_hostaddr))
+                    {
+                      needed = 1;
+                    }
+                  }
+                  break;
+                case    IPPROTO_UDP:
+                  {
+                    struct udphdr {
+                      uint16_t	uh_sport;		/* source port */
+                      uint16_t	uh_dport;		/* destination port */
+                      uint16_t	uh_ulen;		/* udp length */
+                      uint16_t	uh_sum;			/* udp checksum */
+                      const u_char body[];              /* payload */
+                    } *udp_hdr = (struct udphdr *)&(BUF->body);
+
+                    int16_t dport = ntohs(udp_hdr->uh_dport);
+                    int16_t ulen = ntohs(udp_hdr->uh_ulen);
+                    uint16_t peer_port = ntohs(udp_hdr->uh_sport);
+                    if (dport != 1534)
+                      {
+                        needed = 1;
+                      }
+                  }
+                  break;
+                }
+            }
+            break;
           case ETH_P_ARP:
+            {
+              struct arp_hdr {
+                struct uip_eth_hdr ethhdr;
+                uint16_t hwtype;
+                uint16_t protocol;
+                uint8_t hwlen;
+                uint8_t protolen;
+                uint16_t opcode;
+                struct uip_eth_addr shwaddr;
+                uip_ipaddr_t sipaddr;
+                struct uip_eth_addr dhwaddr;
+                uip_ipaddr_t dipaddr;
+              } *BUF = ((struct arp_hdr *)alloc32);
+             if(uip_ipaddr_cmp(&BUF->dipaddr, &uip_hostaddr))
+               {
+                 needed = 1;
+               }
+            }
+            break;
+          case ETH_P_IPV6:
+            break;
+          }
+        if (needed)
+          {
             rnd = ((len-1|7)+1); /* round to a multiple of 8 */
             for (i = 0; i < rnd/8; i++)
               {
                 alloc[i] = eth_base[start+i];
               }
+#if 1 // def VERBOSE
+            PrintData ((u_char *)alloc, len);
+#endif      
             rxbuf[rxhead].len = len;
             rxhead = (rxhead + 1) % queuelen;
-            break;            
-          case ETH_P_IPV6:
-            break;
           }
     }
   eth_write(RSR_OFFSET, buf+1); /* acknowledge */
@@ -166,9 +265,8 @@ static const char *const regnam(int ix)
          return nam;
        }
      else return "????";
-   }
-  
-};
+   } 
+}
 
 static void dumpregs(const char *msg)
 {
@@ -190,7 +288,6 @@ void external_interrupt(void)
 #endif  
   claim = plic[0x80001];
   //  eth_write(MACHI_OFFSET, eth_read(MACHI_OFFSET)&~MACHI_IRQ_EN);
-  dumpregs("before");
   /* Check if there is Rx Data available */
   while (eth_read(RSR_OFFSET) & RSR_RECV_DONE_MASK)
     {
@@ -198,19 +295,8 @@ void external_interrupt(void)
       printf("Ethernet interrupt\n");
 #endif  
       int length = copyin_pkt();
-      handled = 1;
     }
-  if (hid_check_read_irq())
-    {
-      int rslt = hid_read_irq();
-      printf("uart interrupt read %x (%c)\n", rslt, rslt);
-      handled = 1;
-    }
-  if (!handled)
-    {
-      printf("unhandled interrupt!\n");
-    }
-  dumpregs("after");
+  uart_base[0x200] = 0;
   plic[0x80001] = claim;
   //  eth_write(MACHI_OFFSET, eth_read(MACHI_OFFSET)|MACHI_IRQ_EN);
 }
@@ -246,7 +332,7 @@ void loopback_test(int loops, int sim)
   {
     int j;
     uint64_t hi = eth_read(MACHI_OFFSET) & MACHI_MACADDR_MASK;
-    eth_write(MACHI_OFFSET, MACHI_LOOPBACK_MASK|hi);
+    eth_write(MACHI_OFFSET, MACHI_LOOPBACK_MASK|MACHI_ALLPKTS_MASK|hi);
     for (j = 1; j <= loops; j++)
       {
 	enum {maxcnt=187};
@@ -335,12 +421,14 @@ void init_plic(void)
 }
 
 int eth_main(void) {
+  int test = 0;
+  int delay = 0;
   int dhcp_off_cnt = 0;
   int dhcp_ack_cnt = 0;
   uip_ipaddr_t addr;
   uint64_t lo = eth_read(MACLO_OFFSET);
   uint64_t hi = eth_read(MACHI_OFFSET) & MACHI_MACADDR_MASK;
-  eth_write(MACHI_OFFSET, MACHI_IRQ_EN|hi);
+  eth_write(MACHI_OFFSET, MACHI_IRQ_EN/* |MACHI_ALLPKTS_MASK */|hi);
   rxbuf = (inqueue_t *)sbrk(sizeof(inqueue_t)*queuelen);
   txbuf = (outqueue_t *)sbrk(sizeof(outqueue_t)*queuelen);
   
@@ -360,6 +448,9 @@ int eth_main(void) {
          );
 #endif
   uip_setethaddr(mac_addr);
+  uip_ipaddr(&addr, 10,10,10,10);
+  uip_sethostaddr(&addr);
+
 #ifdef INTERRUPT_MODE
   printf("Enabling interrupts\n");
   old_mstatus = read_csr(mstatus);
@@ -373,6 +464,24 @@ int eth_main(void) {
   write_led(-1);
   dhcp_main(mac_addr.addr);
   do {
+    if (++delay == 1000000) if (get_sw() & (1<<11))
+      {
+        enum {max = 1280};
+        int i, len;
+        uint32_t peer_ip = 0;
+        uint32_t srcaddr;
+        uint16_t peer_port = 8888;
+        u_char peer_addr[6];
+        char *teststr = (char *)random_pkt;
+        memset(peer_addr, -1, 6);
+        memcpy(&srcaddr, &uip_hostaddr, 4);
+        sprintf(teststr, "Send test packet %d\n", ++test);
+        len = strlen(teststr)+1;
+        for (i = len; i < max; i++) teststr[i] = i&1 ? i>>8 : i;
+        delay = 0;
+        udp_send(mac_addr.addr, teststr, max, PORT, peer_port, srcaddr, peer_ip, peer_addr);
+        printf("%s", teststr);
+      }
 #ifndef INTERRUPT_MODE
     while (eth_read(RSR_OFFSET) & RSR_RECV_DONE_MASK) copyin_pkt();
 #endif
@@ -381,14 +490,15 @@ int eth_main(void) {
         uint64_t *alloc = txbuf[txtail].alloc;
         int length = txbuf[txtail].len;
         int i, rslt;
-#ifdef VERBOSE
-        printf("TX pending\n");
-#endif
         for (i = 0; i < ((length-1|7)+1)/8; i++)
           {
             eth_write(TXBUFF_OFFSET+(i<<3), alloc[i]);
           }
         eth_write(TPLR_OFFSET,length);
+#if 1 // def VERBOSE
+        printf("TX pending\n");
+        PrintData((u_char *)alloc, length);
+#endif
         txtail = (txtail + 1) % queuelen;
       }
 #ifndef INTERRUPT_MODE
@@ -718,7 +828,7 @@ void process_udp_packet(const u_char *data, int ulen, uint16_t peer_port, uint32
     }
 }
 
-#if defined(VERBOSE) || defined(UDP_DEBUG)
+#if 1 || defined(VERBOSE) || defined(UDP_DEBUG)
 void PrintData (const u_char * data , int Size)
 {
     int i , j;
@@ -765,8 +875,10 @@ void PrintData (const u_char * data , int Size)
 
 int main()
 {
+  enum {loopback=0};
   int i, sw = sd_resp(31);
-  loopback_test(8, (sw & 0xF) == 0xF);
+  if (loopback)
+    loopback_test(8, (sw & 0xF) == 0xF);
   init_plic();
 
   hid_send_string("lowRISC etherboot program\n=====================================\n");

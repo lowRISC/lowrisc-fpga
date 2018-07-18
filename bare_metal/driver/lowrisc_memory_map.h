@@ -13,6 +13,7 @@ extern volatile uint64_t * get_ddr_base();
 extern volatile uint64_t   get_ddr_size();
 extern volatile uint64_t * get_flash_base();
 extern void write_led(uint32_t data);
+extern int get_sw(void);
 
 extern volatile uint32_t *const plic;
 extern volatile uint64_t *const sd_base;

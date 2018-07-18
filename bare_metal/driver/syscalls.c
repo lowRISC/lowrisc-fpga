@@ -221,7 +221,7 @@ void _init(int cid, int nc)
   init_tls();
   thread_entry(cid, nc);
   */
-  sw = sd_base[31];
+  sw = get_sw();
   mac_addr.addr[0] = (uint8_t)0xEE;
   mac_addr.addr[1] = (uint8_t)0xE1;
   mac_addr.addr[2] = (uint8_t)0xE2;

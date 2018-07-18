@@ -71,11 +71,26 @@ uint8_t hid_recv()
 
 // IRQ triggered read
 uint8_t hid_read_irq() {
-  return -1;
+  int ch = 0;
+  do {
+    if (hid_check_read_irq())
+      {
+        uart_base[0x200] = 0;
+        ch = uart_base[0] & 0x7f;
+      }
+  } while (!ch);
+  return ch;
 }
 
 // check hid IRQ for read
 uint8_t hid_check_read_irq() {
+  int retval, rxwrcnt, rxrdcnt;
+  uint64_t stat = uart_base[0];
+  uint64_t counts = uart_base[0x400];
+  rxrdcnt = counts & 0x7ff;
+  rxwrcnt = (counts >> 16) & 0x7ff;
+  retval = rxrdcnt != rxwrcnt;
+  
   return 0;
 }
 
