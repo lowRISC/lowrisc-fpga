@@ -3,10 +3,14 @@
 
 #include <linux/posix_types.h>
 #include <asm/types.h>
+#include <sys/types.h>
 #include <stdbool.h>
+#include <stdint-gcc.h>
+#define CONFIG_USE_STDINT
 
 #ifndef __KERNEL_STRICT_NAMES
 
+#if 0
 typedef __kernel_fd_set		fd_set;
 typedef __kernel_dev_t		dev_t;
 typedef __kernel_ino_t		ino_t;
@@ -17,10 +21,11 @@ typedef __kernel_pid_t		pid_t;
 typedef __kernel_daddr_t	daddr_t;
 typedef __kernel_key_t		key_t;
 typedef __kernel_suseconds_t	suseconds_t;
+#endif
 
 #ifdef __KERNEL__
-typedef __kernel_uid32_t	uid_t;
-typedef __kernel_gid32_t	gid_t;
+// typedef __kernel_uid32_t	uid_t;
+// typedef __kernel_gid32_t	gid_t;
 typedef __kernel_uid16_t        uid16_t;
 typedef __kernel_gid16_t        gid16_t;
 
@@ -40,7 +45,7 @@ typedef __kernel_uid_t		uid_t;
 typedef __kernel_gid_t		gid_t;
 #endif /* __KERNEL__ */
 
-#if defined(__GNUC__) && !defined(__STRICT_ANSI__)
+#if defined(__GNUC__) // && !defined(__STRICT_ANSI__)
 typedef __kernel_loff_t		loff_t;
 #endif
 
@@ -55,7 +60,7 @@ typedef __kernel_size_t		size_t;
 
 #ifndef _SSIZE_T
 #define _SSIZE_T
-typedef __kernel_ssize_t	ssize_t;
+// typedef __kernel_ssize_t	ssize_t;
 #endif
 
 #ifndef _PTRDIFF_T
@@ -70,7 +75,7 @@ typedef __kernel_time_t		time_t;
 
 #ifndef _CLOCK_T
 #define _CLOCK_T
-typedef __kernel_clock_t	clock_t;
+// typedef __kernel_clock_t	clock_t;
 #endif
 
 #ifndef _CADDR_T
