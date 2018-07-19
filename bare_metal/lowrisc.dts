@@ -1,0 +1,117 @@
+/dts-v1/;
+
+/ {
+	#address-cells = <1>;
+	#size-cells = <1>;
+	compatible = "freechips,rocketchip-unknown-dev";
+	model = "freechips,rocketchip-unknown";
+	L13: cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		L5: cpu@0 {
+			clock-frequency = <0>;
+			compatible = "sifive,rocket0", "riscv";
+			d-cache-block-size = <64>;
+			d-cache-sets = <64>;
+			d-cache-size = <16384>;
+			d-tlb-sets = <1>;
+			d-tlb-size = <32>;
+			device_type = "cpu";
+			i-cache-block-size = <64>;
+			i-cache-sets = <64>;
+			i-cache-size = <16384>;
+			i-tlb-sets = <1>;
+			i-tlb-size = <32>;
+			mmu-type = "riscv,sv39";
+			next-level-cache = <&L7>;
+			reg = <0>;
+			riscv,isa = "rv64imafdc";
+			status = "okay";
+			timebase-frequency = <500000>;
+			tlb-split;
+			L3: interrupt-controller {
+				#interrupt-cells = <1>;
+				compatible = "riscv,cpu-intc";
+				interrupt-controller;
+			};
+		};
+	};
+	L7: memory@80000000 {
+		device_type = "memory";
+		reg = <0x80000000 0x8000000>;
+	};
+	L12: soc {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "freechips,rocketchip-unknown-soc", "simple-bus";
+		ranges;
+		L1: clint@2000000 {
+			compatible = "riscv,clint0";
+			interrupts-extended = <&L3 3 &L3 7>;
+			reg = <0x2000000 0x10000>;
+			reg-names = "control";
+		};
+		L10: error-device@3000 {
+			compatible = "sifive,error0";
+			reg = <0x3000 0x1000>;
+			reg-names = "mem";
+		};
+		L6: external-interrupts {
+			interrupt-parent = <&L0>;
+			interrupts = <1 2 3 4>;
+		};
+		L0: interrupt-controller@c000000 {
+			#interrupt-cells = <1>;
+			compatible = "riscv,plic0";
+			interrupt-controller;
+			interrupts-extended = <&L3 11 &L3 9>;
+			reg = <0xc000000 0x4000000>;
+			reg-names = "control";
+			riscv,max-priority = <7>;
+			riscv,ndev = <4>;
+		};
+		L9: rom@10000 {
+			compatible = "sifive,rom0";
+			reg = <0x10000 0x10000>;
+			reg-names = "mem";
+		};
+		mmc: lowrisc-mmc@40010000 {
+                        reg = <0x40010000 0x10000>;
+                        interrupt-parent = <&L0>;
+                        interrupts = <4>;
+                        reg-io-width = <8>;
+                        reg-shift = <3>;
+			compatible = "lowrisc-mmc";
+		};
+		eth: lowrisc-eth@40020000 {
+                        reg = <0x40020000 0x8000>;
+                        interrupt-parent = <&L0>;
+                        interrupts = <3>;
+                        reg-io-width = <8>;
+                        reg-shift = <3>;
+			compatible = "lowrisc-eth";
+		};
+		keyb: lowrisc-keyb@40030000 {
+                        reg = <0x40030000 0x4000>;
+                        interrupt-parent = <&L0>;
+                        interrupts = <2>;
+                        reg-io-width = <8>;
+                        reg-shift = <3>;
+			compatible = "lowrisc-keyb";
+		};
+		uart: lowrisc-fake@40034000 {
+                        reg = <0x40034000 0x4000>;
+                        interrupt-parent = <&L0>;
+                        interrupts = <1>;
+                        reg-io-width = <8>;
+                        reg-shift = <3>;
+			compatible = "lowrisc-fake";
+		};
+		vga: lowrisc-vga@40038000 {
+                        reg = <0x40038000 0x4000>;
+                        reg-io-width = <8>;
+                        reg-shift = <3>;
+			compatible = "lowrisc-vga";
+		};
+	};
+};

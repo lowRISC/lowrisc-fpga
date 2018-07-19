@@ -82,6 +82,7 @@ junk += $(RISCV_FILES) $(HEX_FILES) $(DUMP_FILES)
 
 U = lib/strto.c  lib/time.c  lib/div64.c  lib/ctype.c   drivers/block/blk_legacy.c  drivers/mmc/lowrisc_mmc.c  drivers/mmc/mmc_legacy.c  drivers/mmc/mmc.c lib/string.c  lib/display_options.c ../driver/mini-printf.c ../driver/hid.c ../driver/syscalls.c boot.c ../driver/ff.c ../driver/memory.c ../driver/sdhci-minion-hash-md5.c ../driver/elf.c
 mmc: $U
+	dtc ../lowrisc.dts -O dtb -o ../lowrisc.dtb
 	riscv64-unknown-elf-gcc -c -o crt.o ../driver/crt.S
 	riscv64-unknown-elf-gcc -o $@ -nostdlib -nostartfiles -g -Iinclude -I./arch/riscv/include -I../driver -include ./include/linux/kconfig.h -D__KERNEL__ -D__UBOOT__ -Wall -Wstrict-prototypes -Wno-format-security -fno-builtin -ffreestanding -fshort-wchar -Os -fno-stack-protector -fno-delete-null-pointer-checks -g -fstack-usage -Wno-format-nonliteral -Werror=date-time -ffixed-gp -fpic -fno-strict-aliasing -fno-common -gdwarf-2 -I. -fno-builtin-printf -T ../driver/test.ld $U 
 

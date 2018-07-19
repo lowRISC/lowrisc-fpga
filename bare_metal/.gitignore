@@ -4,3 +4,4 @@
 *.su
 *.riscv
 *~
+lowrisc.dtb

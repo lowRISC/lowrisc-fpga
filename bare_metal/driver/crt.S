@@ -212,6 +212,11 @@ trap_entry:
   addi sp, sp, 272
   mret
 
+.section ".dtb"        
+dtb:
+	/* temporarily hack in modified device tree blob */
+	.incbin "../lowrisc.dtb"
+
 .section ".tdata.begin"
 .globl _tdata_begin
 _tdata_begin:
