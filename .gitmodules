@@ -16,3 +16,6 @@
 [submodule "micropython"]
 	path = micropython
 	url = https://github.com/lowRISC/micropython.git
+[submodule "board/artya7"]
+	path = board/artya7
+	url = https://github.com/lowRISC/lowrisc-artya7.git
