@@ -655,8 +655,8 @@ int main()
   //  enum {range=16384};  
   //  enum {range=65536};
   //  enum {range=262144};
-  //  enum {range=1048576};
-    enum {range=1<<30};
+    enum {range=1048576};
+  //  enum {range=1<<30};
     hid_send_string("\nBare metal DRAM test\n");
     printf("memtester version " __version__ " (%d-bit)\n", UL_LEN);
     printf("Copyright (C) 2001-2012 Charles Cazabon.\n");

@@ -448,7 +448,7 @@ int eth_main(void) {
          );
 #endif
   uip_setethaddr(mac_addr);
-  uip_ipaddr(&addr, 10,10,10,10);
+  uip_ipaddr(&addr, 192,168,0,51);
   uip_sethostaddr(&addr);
 
 #ifdef INTERRUPT_MODE
