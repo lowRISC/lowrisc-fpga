@@ -138,10 +138,8 @@ static inline void led_trigger_event(struct led_trigger *trigger,
  */
 #ifdef CONFIG_LBDAF
 typedef u64 sector_t;
-typedef u64 blkcnt_t;
 #else
 typedef unsigned long sector_t;
-typedef unsigned long blkcnt_t;
 #endif
 
 /* module */
