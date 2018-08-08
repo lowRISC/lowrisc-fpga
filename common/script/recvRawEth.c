@@ -56,9 +56,11 @@ char message[BUFLEN], digest[MD5_DIGEST_LENGTH*2+1];
 void send_message(int s, uint16_t idx)
 {
   int len = CHUNK_SIZE+sizeof(uint16_t);
+  unsigned char md[MD5_DIGEST_LENGTH];
   memcpy(message+CHUNK_SIZE, &idx, sizeof(uint16_t));
+  memcpy(message+len, MD5(message, len, md), MD5_DIGEST_LENGTH);
   //send the message
-  if (write(s, message, len) != len)
+  if (write(s, message, len+MD5_DIGEST_LENGTH) != len+MD5_DIGEST_LENGTH)
     die("send_message()");
 }
 
@@ -80,7 +82,7 @@ int recv_message(int s, int typ)
               memcpy(maskarray, payload, len);
               update = (len==typ);
               break;
-            case MD5_DIGEST_LENGTH*2+1:
+            case MD5_DIGEST_LENGTH*2+2:
               memcpy(digest, payload, len);
               update = (len==typ);
               break;
@@ -130,26 +132,30 @@ int main(int argc, char *argv[])
   struct addrinfo hints;
   struct addrinfo *result, *rp;
   
-  if (!strcmp(argv[1], "-r"))
+  while (argv[1][0] == '-')
     {
-      restart = 1;
+      switch(argv[1][1])
+        {
+        case 'b':
+          incomplete = 0;
+          md5digest = 1;
+          break;
+        case 'd':
+          md5digest = 1;
+          break;
+        case 'r':
+          restart = 1;
+          break;
+        case 's':
+          server = argv[2];
+          ++argv;
+          --argc;
+          break;
+        }
       ++argv;
       --argc;
     }
 
-  if (!strcmp(argv[1], "-d"))
-    {
-      md5digest = 1;
-      ++argv;
-      --argc;
-    }
-  
-  if (!strcmp(argv[1], "-s"))
-    {
-      server = argv[2];
-      argv += 2;
-      argc -= 2;
-    }
   printf("Server(target) set to %s\n", server);
 
   if (argc < 2)
@@ -173,8 +179,7 @@ int main(int argc, char *argv[])
      and) try the next address. */
   
   for (rp = result; rp != NULL; rp = rp->ai_next) {
-    s = socket(rp->ai_family, rp->ai_socktype,
-                 rp->ai_protocol);
+    s = socket(rp->ai_family, rp->ai_socktype | SOCK_NONBLOCK, rp->ai_protocol);
     if (s == -1)
       continue;
     
@@ -225,7 +230,7 @@ int main(int argc, char *argv[])
       printf("Restarting\n");
       do {
         send_message(s, 0xFFFE);
-        usleep(1000);
+        usleep(10000);
       }
       while (!recv_message(s, sizeof(maskarray)));
       restart = 0;
@@ -237,7 +242,7 @@ int main(int argc, char *argv[])
   
   while (incomplete)
     {
-      enum {wait=2, dly=360};
+      enum {wait=2, dly=10000};
       int cnt = 0;
       for (idx = 0; idx < chunks; ++idx)
 	{
@@ -251,7 +256,7 @@ int main(int argc, char *argv[])
 	}
       do {
         send_message(s, 0xFFFD);
-        usleep(1000);
+        usleep(10000);
       }
       while (!recv_message(s, sizeof(maskarray)));
       incomplete = 0;
@@ -271,7 +276,7 @@ int main(int argc, char *argv[])
         send_message(s, 0xFFFC);
         usleep(10000);
       }
-      while (!recv_message(s, MD5_DIGEST_LENGTH*2+1));
+      while (!recv_message(s, MD5_DIGEST_LENGTH*2+2));
       printf("Received digest = %s", digest);
       if (!strcmp(digest, hex))
         {

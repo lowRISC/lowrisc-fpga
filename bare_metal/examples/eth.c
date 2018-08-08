@@ -1,6 +1,6 @@
 // An ethernet loader program
 // #define VERBOSE
-#define INTERRUPT_MODE
+// #define INTERRUPT_MODE
 
 #include "encoding.h"
 #include "bits.h"
@@ -120,7 +120,7 @@ static int copyin_pkt(void)
   int rsr = eth_read(RSR_OFFSET);
   int buf = rsr & RSR_RECV_FIRST_MASK;
   int errs = eth_read(RBAD_OFFSET);
-  int len = eth_read(RPLR_OFFSET+((buf&7)<<3)) & RPLR_LENGTH_MASK;
+  int len = (eth_read(RPLR_OFFSET+((buf&7)<<3)) & RPLR_LENGTH_MASK) - 4;
   if ((len >= 14) && (len <= max_packet) && ((0x101<<(buf&7)) & ~errs) && !eth_discard)
     {
       int rnd, start = (RXBUFF_OFFSET>>3) + ((buf&7)<<8);
@@ -129,7 +129,9 @@ static int copyin_pkt(void)
       // Do we need to read the packet at all ??
       uint16_t rxheader = alloc32[HEADER_OFFSET >> 2];
       int proto_type = ntohs(rxheader) & 0xFFFF;
+#ifdef VERBOSE
       printf("length = %d, proto = %s, (buf = %x)\n", len, proto2txt(proto_type), buf);
+#endif      
       switch (proto_type)
           {
           case ETH_P_IP:
@@ -224,7 +226,7 @@ static int copyin_pkt(void)
               {
                 alloc[i] = eth_base[start+i];
               }
-#if 1 // def VERBOSE
+#ifdef VERBOSE
             PrintData ((u_char *)alloc, len);
 #endif      
             rxbuf[rxhead].len = len;
@@ -428,7 +430,7 @@ int eth_main(void) {
   uip_ipaddr_t addr;
   uint64_t lo = eth_read(MACLO_OFFSET);
   uint64_t hi = eth_read(MACHI_OFFSET) & MACHI_MACADDR_MASK;
-  eth_write(MACHI_OFFSET, MACHI_IRQ_EN/* |MACHI_ALLPKTS_MASK */|hi);
+  eth_write(MACHI_OFFSET, MACHI_IRQ_EN |MACHI_ALLPKTS_MASK |hi);
   rxbuf = (inqueue_t *)sbrk(sizeof(inqueue_t)*queuelen);
   txbuf = (outqueue_t *)sbrk(sizeof(outqueue_t)*queuelen);
   
@@ -495,7 +497,7 @@ int eth_main(void) {
             eth_write(TXBUFF_OFFSET+(i<<3), alloc[i]);
           }
         eth_write(TPLR_OFFSET,length);
-#if 1 // def VERBOSE
+#ifdef VERBOSE
         printf("TX pending\n");
         PrintData((u_char *)alloc, length);
 #endif
@@ -758,67 +760,81 @@ void process_udp_packet(const u_char *data, int ulen, uint16_t peer_port, uint32
   uint8_t *boot_file_buf_end = (uint8_t *)(get_ddr_base()) + siz;
   uint32_t srcaddr;
   memcpy(&srcaddr, &uip_hostaddr, 4);
-  if (ulen == CHUNK_SIZE+sizeof(uint16_t))
+  if (ulen == CHUNK_SIZE+sizeof(uint16_t)+hash_length)
     {
-      memcpy(&idx, data+CHUNK_SIZE, sizeof(uint16_t));
-#ifdef VERBOSE
-      printf("idx = %x\n", idx);  
-#endif
-      switch (idx)
+      md5_ctx_t context;
+      uint8_t *hash_value;
+      char resbuf[sizeof(context.hash[0]) * 4];      
+      md5_begin(&context);
+      md5_hash(&context, data, CHUNK_SIZE+sizeof(uint16_t));
+      md5_end(&context);
+      memcpy(resbuf, context.hash, sizeof(context.hash[0]) * 4);
+      if (memcmp(resbuf, data+CHUNK_SIZE+sizeof(uint16_t), hash_length))
         {
-        case 0xFFFF:
-          {
-            printf("Boot requested\n");
-            boot(boot_file_buf, maxidx*CHUNK_SIZE);
-            break;
-          }
-        case 0xFFFE:
-          {
-            oldidx = 0;
-            maxidx = 0;
-            digest = 0;
-            printf("Clear blocks requested\n");
-            memset(maskarray, 0, sizeof_maskarray);
-            udp_send(mac_addr.addr, maskarray, sizeof_maskarray, PORT, peer_port, srcaddr, peer_ip, peer_addr);
-            break;
-          }
-        case 0xFFFD:
-          {
-            printf("Report blocks requested\n");
-            udp_send(mac_addr.addr, maskarray, sizeof_maskarray, PORT, peer_port, srcaddr, peer_ip, peer_addr);
-            break;
-          }
-        case 0xFFFC:
-          {
-            printf("Report md5 requested\n");
-            if (!digest)
-              digest = hash_buf(boot_file_buf, maxidx*CHUNK_SIZE);
-            udp_send(mac_addr.addr, digest, hash_length * 2 + 1, PORT, peer_port, srcaddr, peer_ip, peer_addr);
-            break;
-          }
-        default:
-          {
-            uint8_t *boot_file_ptr = boot_file_buf+idx*CHUNK_SIZE;
-            if (boot_file_ptr+CHUNK_SIZE < boot_file_buf_end)
-              {
-                digest = NULL;
-                memcpy(boot_file_ptr, data, CHUNK_SIZE);
-                maskarray[idx/64] |= 1ULL << (idx&63);
-                if (maxidx <= idx)
-                  maxidx = idx+1;
-              }
-            else
-              printf("Data Payload index %d out of range\n", idx);
+          printf("MD5 mismatch\n");
+        }
+      else
+        {
+          memcpy(&idx, data+CHUNK_SIZE, sizeof(uint16_t));
 #ifdef VERBOSE
-            printf("Data Payload index %d\n", idx);
-#else
-            if (idx % 100 == 0) printf(".");
+          printf("idx = %x\n", idx);  
 #endif
-            oldidx = idx;
-          }
+          switch (idx)
+            {
+            case 0xFFFF:
+              {
+                printf("Boot requested\n");
+                boot(boot_file_buf, maxidx*CHUNK_SIZE);
+                break;
+              }
+            case 0xFFFE:
+              {
+                oldidx = 0;
+                maxidx = 0;
+                digest = 0;
+                printf("Clear blocks requested\n");
+                memset(maskarray, 0, sizeof_maskarray);
+                udp_send(mac_addr.addr, maskarray, sizeof_maskarray, PORT, peer_port, srcaddr, peer_ip, peer_addr);
+                break;
+              }
+            case 0xFFFD:
+              {
+                printf("Report blocks requested\n");
+                udp_send(mac_addr.addr, maskarray, sizeof_maskarray, PORT, peer_port, srcaddr, peer_ip, peer_addr);
+                break;
+              }
+            case 0xFFFC:
+              {
+                printf("Report md5 requested\n");
+                if (!digest)
+                  digest = hash_buf(boot_file_buf, maxidx*CHUNK_SIZE);
+                udp_send(mac_addr.addr, digest, hash_length * 2 + 1, PORT, peer_port, srcaddr, peer_ip, peer_addr);
+                break;
+              }
+            default:
+              {
+                uint8_t *boot_file_ptr = boot_file_buf+idx*CHUNK_SIZE;
+                if (boot_file_ptr+CHUNK_SIZE < boot_file_buf_end)
+                  {
+                    digest = NULL;
+                    memcpy(boot_file_ptr, data, CHUNK_SIZE);
+                    maskarray[idx/64] |= 1ULL << (idx&63);
+                    if (maxidx <= idx)
+                      maxidx = idx+1;
+                  }
+                else
+                  printf("Data Payload index %d out of range\n", idx);
+#ifdef VERBOSE
+                printf("Data Payload index %d\n", idx);
+#else
+                if (idx % 100 == 0) printf(".");
+#endif
+                oldidx = idx;
+              }
+            }
         }
     }
-  else
+  else if (ulen <= 1500)
     {
       printf("UDP packet length %d sent to port %d\n", ulen, peer_port);
 #ifdef UDP_DEBUG
@@ -828,7 +844,7 @@ void process_udp_packet(const u_char *data, int ulen, uint16_t peer_port, uint32
     }
 }
 
-#if 1 || defined(VERBOSE) || defined(UDP_DEBUG)
+#if defined(VERBOSE) || defined(UDP_DEBUG)
 void PrintData (const u_char * data , int Size)
 {
     int i , j;
@@ -875,10 +891,10 @@ void PrintData (const u_char * data , int Size)
 
 int main()
 {
-  enum {loopback=0};
+  enum {loopback=1};
   int i, sw = sd_resp(31);
   if (loopback)
-    loopback_test(8, (sw & 0xF) == 0xF);
+    loopback_test(8, (sw & 0xF) == 0xE);
   init_plic();
 
   hid_send_string("lowRISC etherboot program\n=====================================\n");
