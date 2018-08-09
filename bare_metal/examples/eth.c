@@ -119,7 +119,7 @@ static int copyin_pkt(void)
   int i, last, needed = 1;
   int rsr = eth_read(RSR_OFFSET);
   int buf = rsr & RSR_RECV_FIRST_MASK;
-  int errs = eth_read(RBAD_OFFSET);
+  int errs = 0; // eth_read(RBAD_OFFSET);
   int len = (eth_read(RPLR_OFFSET+((buf&7)<<3)) & RPLR_LENGTH_MASK) - 4;
   if ((len >= 14) && (len <= max_packet) && ((0x101<<(buf&7)) & ~errs) && !eth_discard)
     {
@@ -342,8 +342,15 @@ void loopback_test(int loops, int sim)
 	int tstcnt = 1 << j;
         int buf = (eth_read(RSR_OFFSET) & RSR_RECV_NEXT_MASK) >> 4;
         int start = RXBUFF_OFFSET + ((buf&7)<<11);
+        uint64_t frq = eth_read(RBAD_OFFSET);
+        
 	if (tstcnt > maxcnt) tstcnt = maxcnt; /* max length packet */
-	if (!sim) printf("Selftest iteration %d, next buffer = %d, rx_start = %x\n", j, buf, start);
+	if (!sim)
+          {
+            printf("Selftest iteration %d, next buffer = %d, rx_start = %x\n", j, buf, start);
+            printf("rx_frq = %d\n", 10*(uint32_t)(frq&0xFFFFFFFF));
+            printf("tx_frq = %d\n", 10*(uint32_t)(frq>>32));
+          }
       /* bit-level digital loopback */
         eth_write(RFCS_OFFSET, 8); /* use 8 buffers */
         eth_write(RSR_OFFSET, buf); /* clear pending receive packet, if any */
@@ -771,7 +778,7 @@ void process_udp_packet(const u_char *data, int ulen, uint16_t peer_port, uint32
       memcpy(resbuf, context.hash, sizeof(context.hash[0]) * 4);
       if (memcmp(resbuf, data+CHUNK_SIZE+sizeof(uint16_t), hash_length))
         {
-          printf("MD5 mismatch\n");
+          printf("?");
         }
       else
         {
@@ -893,13 +900,13 @@ int main()
 {
   enum {loopback=1};
   int i, sw = sd_resp(31);
+  for (i = 10000000; i; i--)
+    write_led(i);
   if (loopback)
     loopback_test(8, (sw & 0xF) == 0xE);
   init_plic();
 
   hid_send_string("lowRISC etherboot program\n=====================================\n");
 
-  for (i = 10000000; i; i--)
-    write_led(i);
   eth_main();
 }
