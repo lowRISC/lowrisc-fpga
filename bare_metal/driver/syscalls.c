@@ -207,6 +207,24 @@ uint32_t __bswap_32(uint32_t x)
 
 uip_eth_addr mac_addr;
 
+void init_plic(void)
+{
+  int i;
+  for (i = 1; i <= 64; i++)
+    {
+      plic[i] = 1;
+    }
+  for (i = 1; i <= 64; i++)
+    {
+      plic[0x800+i/32] |= 1<<(i&31);
+    }
+  plic[0x80000] = 0;
+  for (i = 0; i < 4; i++)
+    printf("%x: %x\n", i, plic[i]);
+  for (i = 0x800; i < 0x804; i++)
+    printf("%x: %x\n", i, plic[i]);
+}
+
 void _init(int cid, int nc)
 {
   int sw;
@@ -238,6 +256,7 @@ void _init(int cid, int nc)
   macaddr_hi = eth_base[MACHI_OFFSET>>3] & MACHI_MACADDR_MASK;
   printf("Calling main with MAC = %x:%x\n", macaddr_hi&MACHI_MACADDR_MASK, macaddr_lo);
  
+  init_plic();
   // only single-threaded programs should ever get here.
   int ret = main(0, 0);
 

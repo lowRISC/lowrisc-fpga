@@ -26,7 +26,7 @@ typedef __u16 le16;
 typedef __u16 u16;
 typedef __u8 u8;
 typedef __s8 s8;
-typedef int bool;
+// typedef int bool;
 
 // MINION_LIB APIs
 extern int echo;

@@ -34,9 +34,9 @@ struct mmc_request;
 typedef void *atomic_t;
 typedef void *wait_queue_head_t;
 typedef void *spinlock_t;
-typedef void *dma_addr_t;
+// typedef void *dma_addr_t;
 
-enum {false, true};
+// enum {false, true};
 
 #define __iomem
 #define ____cacheline_aligned
