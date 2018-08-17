@@ -896,14 +896,15 @@ void PrintData (const u_char * data , int Size)
 
 #define HELLO "Hello LowRISC! "__TIMESTAMP__"\n"
 
-int main()
+int main(int argc, char **argv)
 {
   enum {loopback=1};
-  int i, sw = sd_resp(31);
-  for (i = 10000000; i; i--)
-    write_led(i);
+  int i, sim = argc;
+  if (!sim)
+    for (i = 10000000; i; i--)
+      write_led(i);
   if (loopback)
-    loopback_test(8, (sw & 0xF) == 0xE);
+    loopback_test(8, sim);
   init_plic();
 
   hid_send_string("lowRISC etherboot program\n=====================================\n");

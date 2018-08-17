@@ -209,7 +209,7 @@ uip_eth_addr mac_addr;
 
 void _init(int cid, int nc)
 {
-  int sw;
+  int sw, sim;
   uint32_t macaddr_lo, macaddr_hi;
   extern int main(int, char **);
   extern char _bss[], _end[];
@@ -222,6 +222,7 @@ void _init(int cid, int nc)
   thread_entry(cid, nc);
   */
   sw = get_sw();
+  sim = (sw & 0xF) == 0xE;
   mac_addr.addr[0] = (uint8_t)0xEE;
   mac_addr.addr[1] = (uint8_t)0xE1;
   mac_addr.addr[2] = (uint8_t)0xE2;
@@ -236,10 +237,11 @@ void _init(int cid, int nc)
 
   macaddr_lo = eth_base[MACLO_OFFSET>>3];
   macaddr_hi = eth_base[MACHI_OFFSET>>3] & MACHI_MACADDR_MASK;
-  printf("Calling main with MAC = %x:%x\n", macaddr_hi&MACHI_MACADDR_MASK, macaddr_lo);
+  if (!sim)
+    printf("Calling main with MAC = %x:%x\n", macaddr_hi&MACHI_MACADDR_MASK, macaddr_lo);
  
   // only single-threaded programs should ever get here.
-  int ret = main(0, 0);
+  int ret = main(sim, 0);
 
   char buf[NUM_COUNTERS * 32] __attribute__((aligned(64)));
   char* pbuf = buf;
