@@ -16,7 +16,7 @@
 
 int main()
 {
-  int i, sw = sd_resp(31);
+  int i, sw = sd_base[31];
   loopback_test(8, (sw & 0xF) == 0xF);
 
   hid_send_string("lowRISC etherboot program\n=====================================\n");
