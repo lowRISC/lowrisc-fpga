@@ -26,6 +26,7 @@ int main() {
     }
 }
 
+#if 0
 void external_interrupt(void)
 {
   int i, claim, handled = 0;
@@ -33,3 +34,4 @@ void external_interrupt(void)
   printf("Hello external interrupt! "__TIMESTAMP__"\n");
 #endif  
 }
+#endif

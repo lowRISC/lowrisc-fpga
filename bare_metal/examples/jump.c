@@ -2,9 +2,18 @@
 
 // just jump from BRAM to DDR
 
+#include <stddef.h>
+#include <stdint.h>
+#include <memory.h>
 #include "encoding.h"
+#include "mini-printf.h"
+#include "diskio.h"
+#include "ff.h"
 #include "bits.h"
-#include "memory.h"
+#include "hid.h"
+#include "eth.h"
+#include "elfriscv.h"
+#include "lowrisc_memory_map.h"
 
 int main (void)
 {
