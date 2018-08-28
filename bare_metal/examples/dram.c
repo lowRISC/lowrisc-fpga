@@ -665,6 +665,7 @@ int main()
     testrange((void volatile *) (ddr_base_addr), range, 1, 1);
 }
 
+#if 0
 void external_interrupt(void)
 {
   int i, claim, handled = 0;
@@ -672,3 +673,4 @@ void external_interrupt(void)
   printf("Hello external interrupt! "__TIMESTAMP__"\n");
 #endif  
 }
+#endif  
