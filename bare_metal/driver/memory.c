@@ -47,11 +47,7 @@ volatile uint64_t  get_ddr_size() {
 }
 
 volatile uint64_t * get_flash_base() {
-#ifdef FLASH_BASE
-  return (uint64_t *)(FLASH_BASE);
-#else
-  return (uint64_t *)0;         /* boot ROM, raise error */
-#endif
+  return (uint64_t *)(flash_base_addr);
 }
 
 void write_led(uint32_t data)

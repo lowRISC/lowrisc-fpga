@@ -27,6 +27,7 @@ enum { clint_base_addr = 0x02000000,
           sd_base_addr = 0x40010000,        
           sd_bram_addr = 0x40018000,
          eth_base_addr = 0x40020000,
+       flash_base_addr = 0x40028000,
         keyb_base_addr = 0x40030000, // These have been relocated
         uart_base_addr = 0x40034000,
          vga_base_addr = 0x40038000,
