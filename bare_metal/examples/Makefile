@@ -85,12 +85,13 @@ drivers/mmc/mmc.c lib/string.c  lib/display_options.c ../driver/mini-printf.c ..
 ../driver/memory.c ../driver/sdhci-minion-hash-md5.c ../driver/elf.c ../driver/ethlib.c ../driver/dhcp-client.c ../driver/random.c \
 # ../driver/minion_helper.c
 
+MMC = blk_legacy.o crt.o ctype.o display_options.o div64.o elf.o ff.o hid.o lowrisc_mmc.o memory.o mini-printf.o mmc_legacy.o mmc.o sdhci-minion-hash-md5.o string.o strto.o syscalls.o time.o ethlib.o dhcp-client.o random.o
+
 boot: $U
-	rm -f mmc.a
 	riscv64-unknown-elf-gcc -c -o crt.o ../driver/crt.S
 	riscv64-unknown-elf-gcc -c -g -Iinclude -I./arch/riscv/include -I../driver -include ./include/linux/kconfig.h -D__KERNEL__ -D__UBOOT__ -Wall -Wstrict-prototypes -Wno-format-security -fno-builtin -ffreestanding -fshort-wchar -Os -fno-stack-protector -fno-delete-null-pointer-checks -g -fstack-usage -Wno-format-nonliteral -ffixed-gp -fpic -fno-strict-aliasing -fno-common -gdwarf-2 -I. -fno-builtin-printf -fno-builtin-memcpy $U 
-	riscv64-unknown-elf-ar rc mmc.a blk_legacy.o crt.o ctype.o display_options.o div64.o elf.o ff.o hid.o lowrisc_mmc.o memory.o mini-printf.o mmc_legacy.o mmc.o sdhci-minion-hash-md5.o string.o strto.o syscalls.o time.o ethlib.o dhcp-client.o random.o # minion_helper.o
-	riscv64-unknown-elf-gcc -o $@ -g -nostdlib -nostartfiles boot.o mmc.a -T ../driver/test.ld
+ # minion_helper.o
+	riscv64-unknown-elf-gcc -o $@ -g -nostdlib -nostartfiles boot.o $(MMC) -T ../driver/test.ld
 
 #--------------------------------------------------------------------
 # clean up
