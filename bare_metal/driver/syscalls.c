@@ -239,6 +239,7 @@ void _init(int cid, int nc)
   init_tls();
   thread_entry(cid, nc);
   */
+  hid_init((void*)vga_base_addr);
   sw = sd_base[31];
   mac_addr.addr[0] = (uint8_t)0xEE;
   mac_addr.addr[1] = (uint8_t)0xE1;
