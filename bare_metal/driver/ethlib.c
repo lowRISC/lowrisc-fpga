@@ -85,7 +85,7 @@ void *mysbrk(size_t len)
 
 
 #define PORT 8888   //The port on which to send data
-#define CHUNK_SIZE 1024
+#define CHUNK_SIZE 1464
 
 void process_ip_packet(const u_char *, int);
 void print_ip_packet(const u_char * , int);
@@ -136,13 +136,13 @@ static int copyin_pkt(void)
   return len;
 }
 
-// max size of file image is 10M
-#define MAX_FILE_SIZE (10<<20)
+// max size of file image is increased to 17M to support FreeBSD downloading
+#define MAX_FILE_SIZE (sizeof_maskarray*8*CHUNK_SIZE)
 
 // size of DDR RAM (128M for NEXYS4-DDR) 
 #define DDR_SIZE 0x8000000
 
-enum {sizeof_maskarray=MAX_FILE_SIZE/CHUNK_SIZE/8};
+enum {sizeof_maskarray=CHUNK_SIZE};
 
 static int oldidx;
 static uint64_t maskarray[sizeof_maskarray/sizeof(uint64_t)];
@@ -325,7 +325,7 @@ int eth_main(void) {
   eth_write(MACHI_OFFSET, MACHI_IRQ_EN|hi);
   rxbuf = (inqueue_t *)mysbrk(sizeof(inqueue_t)*queuelen);
   txbuf = (outqueue_t *)mysbrk(sizeof(outqueue_t)*queuelen);
-  
+  printf("Max file size is %d bytes\n", MAX_FILE_SIZE);
   //  maskarray = (uint64_t *)mysbrk(sizeof_maskarray);
   memset(maskarray, 0, sizeof_maskarray);
   
@@ -455,7 +455,13 @@ int eth_main(void) {
                     }
                   }
                   break;
-                case    IPPROTO_IGMP: printf("IP Proto = IGMP\n"); break;
+                case    IPPROTO_IGMP:
+#ifdef VERBOSE
+                  printf("IP Proto = IGMP\n");
+#else
+		  printf("G");
+#endif
+                  break;
                 case    IPPROTO_IPIP: printf("IP Proto = IPIP\n"); break;
                 case    IPPROTO_TCP: printf("IP Proto = TCP\n"); break;
                 case    IPPROTO_EGP: printf("IP Proto = EGP\n"); break;
@@ -473,7 +479,7 @@ int eth_main(void) {
                     int16_t dport = ntohs(udp_hdr->uh_dport);
                     int16_t ulen = ntohs(udp_hdr->uh_ulen);
                     uint16_t peer_port = ntohs(udp_hdr->uh_sport);
-#ifdef VERBOSE                                              
+#ifdef VERBOSE
                     printf("IP Proto = UDP, source port = %d, dest port = %d, length = %d\n",
                            ntohs(udp_hdr->uh_sport),
                            dport,
@@ -490,7 +496,7 @@ int eth_main(void) {
                       }
                     else
                       {
-#ifdef VERBOSE                                              
+#ifdef VERBOSE
                         printf("IP Proto = UDP, source port = %d, dest port = %d, length = %d\n",
                            ntohs(udp_hdr->uh_sport),
                            dport,
@@ -503,7 +509,7 @@ int eth_main(void) {
                 case    IPPROTO_TP: printf("IP Proto = TP\n"); break;
                 case    IPPROTO_DCCP: printf("IP Proto = DCCP\n"); break;
                 case    IPPROTO_IPV6:
-#ifdef VERBOSE                      
+#ifdef VERBOSE
 		  printf("IP Proto = IPV6\n");
 #else
 		  printf("6");
@@ -516,7 +522,13 @@ int eth_main(void) {
                 case    IPPROTO_MTP: printf("IP Proto = MTP\n"); break;
                 case    IPPROTO_BEETPH: printf("IP Proto = BEETPH\n"); break;
                 case    IPPROTO_ENCAP: printf("IP Proto = ENCAP\n"); break;
-                case    IPPROTO_PIM: printf("IP Proto = PIM\n"); break;
+                case    IPPROTO_PIM:
+#ifdef VERBOSE
+                  printf("IP Proto = PIM\n");
+#else
+		  printf("M");
+#endif
+                  break;
                 case    IPPROTO_COMP: printf("IP Proto = COMP\n"); break;
                 case    IPPROTO_SCTP: printf("IP Proto = SCTP\n"); break;
                 case    IPPROTO_UDPLITE: printf("IP Proto = UDPLITE\n"); break;
@@ -567,7 +579,7 @@ int eth_main(void) {
                }
              else
                {
-#ifdef VERBOSE                 
+#ifdef VERBOSE
                  printf("Discarded ARP  %d.%d.%d.%d, my addr =  %d.%d.%d.%d\n", uip_ipaddr_to_quad(&BUF->dipaddr), uip_ipaddr_to_quad(&uip_hostaddr));
 #endif                 
                }
@@ -634,7 +646,7 @@ void process_udp_packet(const u_char *data, int ulen, uint16_t peer_port, uint32
     {
       memcpy(&idx, data+CHUNK_SIZE, sizeof(uint16_t));
 #ifdef VERBOSE
-      printf("idx = %x\n", idx);  
+      printf("idx = %x\n", idx);
 #endif
       switch (idx)
         {

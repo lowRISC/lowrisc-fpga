@@ -36,7 +36,9 @@
 #define SERVER "192.168.0.51"
 #define BUFLEN 1536  //Max length of buffer
 #define PORT "8888"   //The port on which to send data
-#define CHUNK_SIZE 1024
+#define CHUNK_SIZE 1464
+
+enum {sizeof_maskarray=CHUNK_SIZE};
 
 void die(char *s)
 {
@@ -44,12 +46,7 @@ void die(char *s)
     exit(1);
 }
 
-#define BUF_SIZ		1536
-// max size of file image is 10M
-#define MAX_FILE_SIZE (10<<20)
-#define CHUNK_SIZE 1024
-
-static uint64_t maskarray[MAX_FILE_SIZE/CHUNK_SIZE/64];
+static uint64_t maskarray[sizeof_maskarray/8];
 struct sockaddr_in si_other;
 char message[BUFLEN], digest[MD5_DIGEST_LENGTH*2+1];
 
@@ -66,9 +63,9 @@ int recv_message(int s, int typ)
 {
   int update = 0;
   int len = 0;
-  uint8_t payload[BUF_SIZ];
+  uint8_t payload[BUFLEN];
   do {
-    len = read(s, payload, BUF_SIZ);
+    len = read(s, payload, BUFLEN);
     if (len > 0)
       {
 #if 1
@@ -119,7 +116,7 @@ int main(int argc, char *argv[])
   struct ifreq ifopts;	/* set promiscuous mode */
   struct ifreq if_ip;	/* get ip addr */
   struct sockaddr_storage their_addr;
-  uint8_t buf[BUF_SIZ];
+  uint8_t buf[BUFLEN];
   char ifName[IFNAMSIZ];
   socklen_t peer_addr_size;
   int cfd, len, chunks, fd, s, slen, rslt;
@@ -237,7 +234,7 @@ int main(int argc, char *argv[])
   
   while (incomplete)
     {
-      enum {wait=2, dly=360};
+      enum {wait=2, dly=400};
       int cnt = 0;
       for (idx = 0; idx < chunks; ++idx)
 	{
