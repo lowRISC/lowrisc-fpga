@@ -12,9 +12,6 @@
  */
 
 #include <arpa/inet.h>
-#include <linux/if_packet.h>
-#include <linux/ip.h>
-#include <linux/udp.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -22,8 +19,10 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <net/if.h>
-#include <netinet/ether.h>
+#include <net/ethernet.h>
 #include <fcntl.h>
+#include <netinet/ip.h>
+#include <netinet/in.h>
 #include <assert.h>
 #include <sys/mman.h>
 #include <arpa/inet.h>
@@ -206,13 +205,10 @@ int main(int argc, char *argv[])
   m = (char *)mmap(NULL, len, PROT_READ, MAP_PRIVATE, fd, 0);
   unsigned char md[MD5_DIGEST_LENGTH];
   unsigned char hex[MD5_DIGEST_LENGTH*2+1];
-  uint8_t *md5 = MD5((unsigned char *)m, chunks*CHUNK_SIZE, md);
-  md5_bin2hex(hex, md5);
-  printf("MD5 sum = %s\n", hex);
   /* Header structures */
   struct ether_header *eh = (struct ether_header *) buf;
-  struct iphdr *iph = (struct iphdr *) (buf + sizeof(struct ether_header));
-  struct udphdr *udph = (struct udphdr *) (buf + sizeof(struct iphdr) + sizeof(struct ether_header));
+  struct ip *iph = (struct ip *) (buf + sizeof(struct ether_header));
+  struct udphdr *udph = (struct udphdr *) (buf + sizeof(struct ip) + sizeof(struct ether_header));
   
   memset(&if_ip, 0, sizeof(struct ifreq));
   
@@ -262,23 +258,7 @@ int main(int argc, char *argv[])
       printf(" %d%%\n", 100*(chunks-incomplete)/chunks);
       fflush(stdout);
     }
-  if (md5digest)
-    {
-      do {
-        send_message(s, 0xFFFC);
-        usleep(10000);
-      }
-      while (!recv_message(s, MD5_DIGEST_LENGTH*2+1));
-      printf("Received digest = %s", digest);
-      if (!strcmp(digest, hex))
-        {
-          printf(" (OK)\n");
-          if (go) send_message(s, 0xFFFF);
-        }
-      else
-        printf(" (BAD)\n");
-    }
-  else if (go) send_message(s, 0xFFFF);
+  if (go) send_message(s, 0xFFFF);
   close(s);
   return ret;
 }
