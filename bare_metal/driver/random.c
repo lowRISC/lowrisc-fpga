@@ -23,3 +23,14 @@ rand (void)
   static pcg32_random_t rng;
   return (int) pcg32_random_r(&rng);
 }
+
+unsigned int rand32(void)
+{
+  return ((unsigned int) rand() | ( (unsigned int) rand() << 16));
+}
+
+uint64_t rand64(void)
+{
+  uint64_t low = rand32(), high = rand32();
+  return low | (high << 32);
+}

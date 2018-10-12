@@ -237,9 +237,6 @@ static unsigned short csum(uint8_t *buf, int nbytes)
 
 static uintptr_t old_mstatus, old_mie;
 
-#define rand32() ((unsigned int) rand() | ( (unsigned int) rand() << 16))
-uint64_t rand64(void) { uint64_t low = rand32(), high = rand32(); return low | (high << 32); }
-
 static uint64_t random_pkt[max_packet/sizeof(uint64_t)];
 
 void loopback_test(int loops, int sim)
@@ -601,7 +598,7 @@ int eth_main(void) {
   } while (1);
 }
 
-void boot(uint8_t *boot_file_buf, uint32_t fsize)
+static void ethboot(void)
 {
   uint32_t br;
   uint8_t *memory_base = (uint8_t *)(get_ddr_base());
@@ -612,12 +609,6 @@ void boot(uint8_t *boot_file_buf, uint32_t fsize)
   eth_write(MACHI_OFFSET, eth_read(MACHI_OFFSET)&~MACHI_IRQ_EN);
   eth_write(RSR_OFFSET, RSR_RECV_LAST_MASK);
   printf("Ethernet interrupt status = %d\n", eth_read(RSR_OFFSET));
-  printf("Load %d bytes to memory address %x from boot.bin of %d bytes.\n", fsize, boot_file_buf, fsize);
-
-  // read elf
-  printf("load elf to DDR memory\n");
-  if(br = load_elf(boot_file_buf, fsize))
-    printf("elf read failed with code %0d", br);
 
   printf("Boot the loaded program...\n");
 
@@ -630,8 +621,6 @@ void boot(uint8_t *boot_file_buf, uint32_t fsize)
   printf("Goodbye, booter ...\n");
   asm volatile ("mret");
 }
-
-static uint8_t *digest = NULL;
 
 void process_udp_packet(const u_char *data, int ulen, uint16_t peer_port, uint32_t peer_ip, const u_char *peer_addr)
 {
@@ -653,14 +642,13 @@ void process_udp_packet(const u_char *data, int ulen, uint16_t peer_port, uint32
         case 0xFFFF:
           {
             printf("Boot requested\n");
-            boot(boot_file_buf, maxidx*CHUNK_SIZE);
+            ethboot();
             break;
           }
         case 0xFFFE:
           {
             oldidx = 0;
             maxidx = 0;
-            digest = 0;
             printf("Clear blocks requested\n");
             memset(maskarray, 0, sizeof_maskarray);
             udp_send(mac_addr.addr, maskarray, sizeof_maskarray, PORT, peer_port, srcaddr, peer_ip, peer_addr);
@@ -674,10 +662,48 @@ void process_udp_packet(const u_char *data, int ulen, uint16_t peer_port, uint32
           }
         case 0xFFFC:
           {
-            printf("Report md5 requested\n");
-            if (!digest)
-              digest = hash_buf(boot_file_buf, maxidx*CHUNK_SIZE);
+            uint8_t *digest;
+            uint32_t *target;
+            size_t siz;
+            memcpy(&target, data, sizeof(uint32_t *));
+            memcpy(&siz, data+sizeof(uint32_t *), sizeof(siz));
+            printf("Report MD5 of size %d of target memory %p\n", siz, target);
+            digest = hash_buf(boot_file_buf, maxidx*CHUNK_SIZE);
             udp_send(mac_addr.addr, digest, hash_length * 2 + 1, PORT, peer_port, srcaddr, peer_ip, peer_addr);
+            break;
+          }
+        case 0xFFFB:
+          {
+            int j;
+            uint32_t *target;
+            size_t siz;
+            memcpy(&target, data, sizeof(uint32_t *));
+            memcpy(&siz, data+sizeof(uint32_t *), sizeof(siz));
+            printf("Copying chunk of size %d to target memory %p\n", siz, target);
+            memcpy(target, boot_file_buf, siz);
+            for (j = 0; j < 16; j++)
+              printf("%X ", target[j]);
+            printf("\n");
+            break;
+          }
+        case 0xFFFA:
+          {
+            void *target;
+            size_t siz;
+            memcpy(&target, data, sizeof(target));
+            memcpy(&siz, data+sizeof(void *), sizeof(siz));
+            printf("Clearing chunk of size %d to target memory %p\n", siz, target);
+            memset(target, 0, siz);
+            break;
+          }
+        case 0xFFF9:
+          {
+            void *target;
+            size_t siz;
+            memcpy(&target, data, sizeof(target));
+            memcpy(&siz, data+sizeof(void *), sizeof(siz));
+            printf("Downloading chunk of size %d from target memory %p\n", siz, target);
+            udp_send(mac_addr.addr, target, siz, PORT, peer_port, srcaddr, peer_ip, peer_addr);
             break;
           }
         default:
@@ -685,7 +711,6 @@ void process_udp_packet(const u_char *data, int ulen, uint16_t peer_port, uint32
             uint8_t *boot_file_ptr = boot_file_buf+idx*CHUNK_SIZE;
             if (boot_file_ptr+CHUNK_SIZE < boot_file_buf_end)
               {
-                digest = NULL;
                 memcpy(boot_file_ptr, data, CHUNK_SIZE);
                 maskarray[idx/64] |= 1ULL << (idx&63);
                 if (maxidx <= idx)

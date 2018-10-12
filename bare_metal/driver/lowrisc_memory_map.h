@@ -18,8 +18,11 @@ extern volatile uint32_t *const plic;
 extern volatile uint64_t *const sd_base;
 extern volatile uint64_t *const sd_bram;
 extern volatile uint16_t *const hid_vga_ptr;
+extern volatile uint64_t *const hid_reg_ptr;
+extern volatile uint8_t  *const hid_font_ptr;
 extern volatile uint64_t *const uart_base;
 extern volatile uint64_t *const eth_base;
+extern volatile uint32_t *const keyb_base;
 
 enum { clint_base_addr = 0x02000000,
 	plic_base_addr = 0x0c000000,

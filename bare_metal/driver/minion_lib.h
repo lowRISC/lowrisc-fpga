@@ -347,3 +347,7 @@ extern void myhash(size_t addr);
 extern uint8_t *hash_buf(const void *in_buf, int count);
 extern int minion_cache_map(int sect, int clr);
 extern uint32_t sd_resp(int sel);
+extern int rand (void);
+extern unsigned int rand32(void);
+extern uint64_t rand64(void);
+

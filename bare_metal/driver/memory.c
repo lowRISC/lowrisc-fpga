@@ -25,6 +25,12 @@ outqueue_t *txbuf;
 volatile uint64_t *const uart_base = (uint64_t *)uart_base_addr;
 // LowRISC VGA-compatible display base address
 volatile uint16_t *const hid_vga_ptr = (uint16_t *)vga_base_addr;
+// VGA tuning registers
+volatile uint64_t *const hid_reg_ptr = (volatile uint64_t *)(vga_base_addr+16384);
+// Downloadable font pointer
+volatile uint8_t *const hid_font_ptr = (volatile uint8_t *)(vga_base_addr+24576);
+// HID keyboard
+volatile uint32_t *const keyb_base = (volatile uint32_t *)keyb_base_addr;
 // LowRISC Ethernet base address
 volatile uint64_t *const eth_base = (volatile uint64_t *)eth_base_addr;
 // LowRISC SD-card base address

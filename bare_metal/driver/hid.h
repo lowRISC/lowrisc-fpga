@@ -13,23 +13,24 @@
 #define LOWRISC_REGS	8192
 #define LOWRISC_COLUMNS	128
 #define LOWRISC_ROWS	32
-#define LOWRISC_REGS_SCROLL (0<<2)
-#define LOWRISC_REGS_CURSV  (1<<2)
-#define LOWRISC_REGS_XCUR   (2<<2)
-#define LOWRISC_REGS_YCUR   (3<<2)
-#define LOWRISC_REGS_HSTART   (4<<2)
-#define LOWRISC_REGS_HSYN   (5<<2)
-#define LOWRISC_REGS_HSTOP   (6<<2)
-#define LOWRISC_REGS_VSTART   (7<<2)
-#define LOWRISC_REGS_VSTOP   (8<<2)
-#define LOWRISC_REGS_VBLSTOP   (9<<2)
-#define LOWRISC_REGS_VBLSTART   (10<<2)
-#define LOWRISC_REGS_VPIXSTART   (11<<2)
-#define LOWRISC_REGS_VPIXSTOP   (12<<2)
-#define LOWRISC_REGS_HPIXSTART   (13<<2)
-#define LOWRISC_REGS_HPIXSTOP   (14<<2)
-#define LOWRISC_REGS_HPIXREG   (15<<2)
-#define LOWRISC_REGS_VPIXREG   (16<<2)
+#define LOWRISC_REGS_CURSV  (1)
+#define LOWRISC_REGS_XCUR   (2)
+#define LOWRISC_REGS_YCUR   (3)
+#define LOWRISC_REGS_HSTART   (4)
+#define LOWRISC_REGS_HSYN   (5)
+#define LOWRISC_REGS_HSTOP   (6)
+#define LOWRISC_REGS_VSTART   (7)
+#define LOWRISC_REGS_VSTOP   (8)
+#define LOWRISC_REGS_VPIXSTART   (11)
+#define LOWRISC_REGS_VPIXSTOP   (12)
+#define LOWRISC_REGS_HPIXSTART   (13)
+#define LOWRISC_REGS_HPIXSTOP   (14)
+#define LOWRISC_REGS_HPIX      (15)
+#define LOWRISC_REGS_VPIX      (16)
+#define LOWRISC_REGS_HDIV      (17)
+#define LOWRISC_REGS_PALETTE   (32)
+
+extern char zifu[];
 
 extern void hid_init(void *base);
 extern void hid_send(uint8_t);
