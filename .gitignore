@@ -1,1 +1,2 @@
 common/script/recvRawEth
+common/script/*.o

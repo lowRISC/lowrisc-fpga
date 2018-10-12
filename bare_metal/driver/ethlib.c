@@ -677,15 +677,15 @@ void process_udp_packet(const u_char *data, int ulen, uint16_t peer_port, uint32
         case 0xFFFB:
           {
             int j;
+            uint8_t *fakedigest;
             uint32_t *target;
             size_t siz;
             memcpy(&target, data, sizeof(uint32_t *));
             memcpy(&siz, data+sizeof(uint32_t *), sizeof(siz));
             printf("Copying chunk of size %d to target memory %p\n", siz, target);
             memcpy(target, boot_file_buf, siz);
-            for (j = 0; j < 16; j++)
-              printf("%X ", target[j]);
-            printf("\n");
+	    fakedigest = data+sizeof(uint32_t *)+sizeof(size_t);
+            udp_send(mac_addr.addr, fakedigest, hash_length * 2 + 1, PORT, peer_port, srcaddr, peer_ip, peer_addr);
             break;
           }
         case 0xFFFA:
