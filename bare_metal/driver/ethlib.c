@@ -78,7 +78,7 @@ extern uip_eth_addr mac_addr;
 void *mysbrk(size_t len)
 {
   static unsigned long rused = 0;
-  char *rd = rused + (char *)get_ddr_base();
+  char *rd = rused + (char *)get_ddr_base() +  ((uint64_t)get_ddr_size()) / 2;
   rused += ((len-1)|7)+1;
   return rd;
 }
@@ -619,6 +619,7 @@ static void ethboot(void)
   write_csr(mepc, memory_base);
 
   printf("Goodbye, booter ...\n");
+  asm volatile ("fence.i");
   asm volatile ("mret");
 }
 
@@ -667,8 +668,9 @@ void process_udp_packet(const u_char *data, int ulen, uint16_t peer_port, uint32
             size_t siz;
             memcpy(&target, data, sizeof(uint32_t *));
             memcpy(&siz, data+sizeof(uint32_t *), sizeof(siz));
-            printf("Report MD5 of size %d of target memory %p\n", siz, target);
-            digest = hash_buf(boot_file_buf, maxidx*CHUNK_SIZE);
+            printf("Copy and report MD5 of size %d of target memory %p\n", siz, target);
+            memcpy(target, boot_file_buf, siz);
+            digest = hash_buf(target, siz);
             udp_send(mac_addr.addr, digest, hash_length * 2 + 1, PORT, peer_port, srcaddr, peer_ip, peer_addr);
             break;
           }
