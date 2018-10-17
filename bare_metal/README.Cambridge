@@ -1,0 +1,9 @@
+This directory contains various files from different sources with the common aim of providing a library of bare metal code for LowRISC SOC. Principally the tasks to be done are: self test, Ethernet booting, and multi-media card/secure digital card booting. The Ethernet support came largeley from the uIP TCP/IP stack, and the MMC/SD code is mostly based on u-boot. The DOS filing system was written at Cambridge.
+
+bare_metal/driver => libraries of general usefulness
+bare_metal/examples => main functions and standalone tests
+bare_metal/examples/{arch,drivers,include,lib,scripts} => u-boot libraries for recognizing SD-Cards
+
+It so happens that different sources of code may have conflicting type declarations so in this case files in these directories may not match the original source as conflicts are removed to reconcile any differences.
+
+As per the conditions of the GPL, when a permissive license is mixed with a GPL license, the whole executable is governed by the GPL. The main practical consequence is that the binary boot loader code (src/boot.mem) must not be distributed separately from the source in the preferred form for modification.
