@@ -1,3 +1,6 @@
+// Based on https://raw.githubusercontent.com/lowRISC/u-boot-riscv/master/include/linux/typecheck.h
+// LICENSE: not specified: assumed GPL-2.0+
+
 #ifndef TYPECHECK_H_INCLUDED
 #define TYPECHECK_H_INCLUDED
 

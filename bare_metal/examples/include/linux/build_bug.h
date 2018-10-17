@@ -1,3 +1,6 @@
+// Based on https://raw.githubusercontent.com/lowRISC/u-boot-riscv/master/include/linux/build_bug.h
+// LICENSE: not specified: assumed GPL-2.0+
+
 #ifndef _LINUX_BUILD_BUG_H
 #define _LINUX_BUILD_BUG_H
 

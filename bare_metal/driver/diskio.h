@@ -1,5 +1,5 @@
 /*-----------------------------------------------------------------------*/
-/*  Low level disk interface modlue include file   (C)ChaN, 2014         */
+/*  Low level disk interface module include file   (C)ChaN, 2014         */
 /*-----------------------------------------------------------------------*/
 /*
  *  Copyright (C) 2014, ChaN, all right reserved.
@@ -9,7 +9,7 @@
  *   personal, non-profit or commercial products UNDER YOUR RESPONSIBILITY.
  * * Redistributions of source code must retain the above copyright notice.
  *
- * Copyright (c) 2015, University of Cambridge.
+ * Copyright (c) 2015-2018, University of Cambridge.
  * All Rights Reserved.
  *
  * Redistribution and use in source and binary forms, with or without

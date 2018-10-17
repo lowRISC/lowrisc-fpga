@@ -1,3 +1,6 @@
+// Based on https://raw.githubusercontent.com/lowRISC/u-boot-riscv/master/include/linux/kconfig.h
+// LICENSE: not specified: assumed GPL-2.0+
+
 #ifndef __LINUX_KCONFIG_H
 #define __LINUX_KCONFIG_H
 

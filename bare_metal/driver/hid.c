@@ -1,4 +1,4 @@
-// See LICENSE for license details.
+// See LICENSE.Cambridge for license details.
 
 #include "hid.h"
 #include "lowrisc_memory_map.h"

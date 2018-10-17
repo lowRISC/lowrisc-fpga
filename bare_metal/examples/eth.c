@@ -1,3 +1,4 @@
+// See LICENSE.Cambridge for license details.
 // Ethernet loader program main function
 #include "encoding.h"
 #include "bits.h"

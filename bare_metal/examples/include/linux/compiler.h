@@ -1,3 +1,6 @@
+// Based on https://raw.githubusercontent.com/lowRISC/u-boot-riscv/master/include/linux/compiler.h
+// LICENSE: not specified: assumed GPL-2.0+
+
 #ifndef __LINUX_COMPILER_H
 #define __LINUX_COMPILER_H
 

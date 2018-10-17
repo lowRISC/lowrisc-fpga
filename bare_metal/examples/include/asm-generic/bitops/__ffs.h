@@ -1,3 +1,6 @@
+// Based on https://raw.githubusercontent.com/lowRISC/u-boot-riscv/master/include/asm-generic/bitops/__ffs.h
+// LICENSE: not specified: assumed GPL-2.0+
+
 #ifndef _ASM_GENERIC_BITOPS___FFS_H_
 #define _ASM_GENERIC_BITOPS___FFS_H_
 

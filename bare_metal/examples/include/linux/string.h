@@ -1,3 +1,6 @@
+// Based on https://raw.githubusercontent.com/lowRISC/u-boot-riscv/master/include/linux/string.h
+// LICENSE: not specified: assumed GPL-2.0+
+
 #ifndef _LINUX_STRING_H_
 #define _LINUX_STRING_H_
 

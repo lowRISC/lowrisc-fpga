@@ -1,3 +1,6 @@
+// Based on https://raw.githubusercontent.com/lowRISC/u-boot-riscv/master/include/linux/compiler-gcc.h
+// LICENSE: not specified: assumed GPL-2.0+
+
 #ifndef __LINUX_COMPILER_H
 #error "Please don't include <linux/compiler-gcc.h> directly, include <linux/compiler.h> instead."
 #endif

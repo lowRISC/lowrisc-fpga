@@ -1,3 +1,6 @@
+// Lookup table for hardware keyboard scan to PC key code and ASCII
+// See LICENSE.Cambridge for license details.
+
 [  0] = {0x00,0x00,0x00},
 [  1] = {0x43,0x00,0x00},
 [  2] = {0x41,0x00,0x00},

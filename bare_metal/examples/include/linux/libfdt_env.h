@@ -1,3 +1,6 @@
+// Based on https://raw.githubusercontent.com/lowRISC/u-boot-riscv/master/include/linux/libfdt_env.h
+// LICENSE: not specified: assumed GPL-2.0+
+
 #ifdef USE_HOSTCC
 #include "../scripts/dtc/libfdt/libfdt_env.h"
 #else

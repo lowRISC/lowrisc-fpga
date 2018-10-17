@@ -1,3 +1,5 @@
+// Based on glibc/bits/wordsize.h
+// LICENSE: GPL v2+
 
 /* The following entries are a template for what defines should be in the
    wordsize.h header file for a target.  */

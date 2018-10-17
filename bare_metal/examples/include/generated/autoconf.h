@@ -1,3 +1,6 @@
+// Based on https://raw.githubusercontent.com/lowRISC/u-boot-riscv/master/include/generated/autoconf.h
+// LICENSE: not specified: assumed GPL-2.0+
+
 /*
  *
  * Automatically generated file; DO NOT EDIT.

@@ -1,3 +1,6 @@
+// Based on https://raw.githubusercontent.com/lowRISC/u-boot-riscv/master/include/linux/byteorder/generic.h
+// LICENSE: not specified: assumed GPL-2.0+
+
 #ifndef _LINUX_BYTEORDER_GENERIC_H
 #define _LINUX_BYTEORDER_GENERIC_H
 

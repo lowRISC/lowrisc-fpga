@@ -1,3 +1,6 @@
+// Based on https://raw.githubusercontent.com/lowRISC/u-boot-riscv/master/include/asm-generic/bitops/fls.h
+// LICENSE: not specified: assumed GPL-2.0+
+
 #ifndef _ASM_GENERIC_BITOPS_FLS_H_
 #define _ASM_GENERIC_BITOPS_FLS_H_
 

@@ -1,3 +1,6 @@
+// Based on https://raw.githubusercontent.com/lowRISC/u-boot-riscv/master/include/pci_ids.h
+// LICENSE: not specified: assumed GPL-2.0+
+
 /*
  *	PCI Class, Vendor and Device IDs
  *

@@ -1,3 +1,6 @@
+// Based on https://raw.githubusercontent.com/lowRISC/u-boot-riscv/master/include/generated/generic-asm-offsets.h
+// LICENSE: not specified: assumed GPL-2.0+
+
 #ifndef __GENERIC_ASM_OFFSETS_H__
 #define __GENERIC_ASM_OFFSETS_H__
 /*

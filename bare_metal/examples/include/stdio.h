@@ -1,3 +1,6 @@
+// Based on https://raw.githubusercontent.com/lowRISC/u-boot-riscv/master/include/stdio.h
+// LICENSE: not specified: assumed GPL-2.0+
+
 #ifndef __STDIO_H
 #define __STDIO_H
 

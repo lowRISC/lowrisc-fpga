@@ -1,3 +1,5 @@
+// See LICENSE.Cambridge for license details.
+
 #include <stdio.h>
 #include <stdint.h>
 #include <stddef.h>

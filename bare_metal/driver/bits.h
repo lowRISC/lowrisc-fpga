@@ -1,3 +1,6 @@
+// based on https://raw.githubusercontent.com/riscv/riscv-pk/master/machine/bits.h
+// See LICENSE.Berkley for license details.
+
 #ifndef _RISCV_BITS_H
 #define _RISCV_BITS_H
 

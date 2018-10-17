@@ -1,3 +1,16 @@
+// Based on newlib/libc/machine/riscv/strcpy.c
+
+/* Copyright (c) 2017  SiFive Inc. All rights reserved.
+    2 
+    3    This copyrighted material is made available to anyone wishing to use,
+    4    modify, copy, or redistribute it subject to the terms and conditions
+    5    of the FreeBSD License.   This program is distributed in the hope that
+    6    it will be useful, but WITHOUT ANY WARRANTY expressed or implied,
+    7    including the implied warranties of MERCHANTABILITY or FITNESS FOR
+    8    A PARTICULAR PURPOSE.  A copy of this license is available at
+    9    http://www.opensource.org/licenses.
+   10 */
+
 #include <string.h>
 #include <stdint.h>
 

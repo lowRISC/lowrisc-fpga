@@ -1,3 +1,4 @@
+// See LICENSE.Cambridge for license details.
 // A hello world program
 
 #include <stdio.h>

@@ -1,3 +1,6 @@
+// From  gcc/gcc/testsuite/gcc.c-torture/execute/builtins/lib/memcmp.c
+// LICENSE GPL-3.0-or-later
+
 __attribute__ ((__noinline__))
 int
 memcmp (const void *s1, const void *s2, __SIZE_TYPE__ len)

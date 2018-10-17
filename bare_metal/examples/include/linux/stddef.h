@@ -1,3 +1,6 @@
+// Based on https://raw.githubusercontent.com/lowRISC/u-boot-riscv/master/include/linux/stddef.h
+// LICENSE: not specified: assumed GPL-2.0+
+
 #ifndef _LINUX_STDDEF_H
 #define _LINUX_STDDEF_H
 

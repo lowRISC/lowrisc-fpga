@@ -1,3 +1,6 @@
+// Based on https://raw.githubusercontent.com/lowRISC/u-boot-riscv/master/include/compiler.h
+// LICENSE: not specified: assumed GPL-2.0+
+
 /*
  * Keep all the ugly #ifdef for system stuff here
  */

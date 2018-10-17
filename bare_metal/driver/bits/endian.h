@@ -1,3 +1,6 @@
+// Based on glibc-2.12.2/bits/endian.h
+// LICENSE: GPL V2 or later
+
 /* This file should define __BYTE_ORDER as appropriate for the machine
    in question.  See string/endian.h for how to define it.
 

@@ -1,3 +1,6 @@
+// based on https://raw.githubusercontent.com/lattera/glibc/master/include/endian.h
+// LICENSE GPL-2.0-or-later
+
 #include <string/endian.h>
 
 #if defined _LIBC && !defined _ISOMAC
