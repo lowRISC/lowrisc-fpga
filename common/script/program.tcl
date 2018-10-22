@@ -1,5 +1,8 @@
+# See LICENSE.Cambridge for license details.
+# script to download bitstream directly into FPGA RAM
+
 # Xilinx Vivado script
-# Version: Vivado 2015.4
+# Version: Vivado 2018.1
 # Function:
 #   Download bitstream to FPGA
 

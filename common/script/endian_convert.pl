@@ -1,4 +1,6 @@
 #!/usr/bin/perl -w
+# See LICENSE.Cambridge for license details.
+# Endian conversion script (not sure if we still use it)
 
 open (my $file, '<', $ARGV[0]) or die 'cannot read input mem file';
 

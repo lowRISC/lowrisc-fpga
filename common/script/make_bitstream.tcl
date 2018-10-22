@@ -1,3 +1,6 @@
+# See LICENSE.Cambridge for license details.
+# script to launch Vivado implementation
+
 set origin_dir "."
 set project_name [lindex $argv 0]
 set orig_proj_dir [file normalize $origin_dir/$project_name]

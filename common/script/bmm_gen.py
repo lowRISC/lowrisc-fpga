@@ -1,3 +1,6 @@
+# See LICENSE.Cambridge for license details.
+# script to search for block RAMs to update
+
 import sys
 import re
 

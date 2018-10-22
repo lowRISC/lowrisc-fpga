@@ -1,3 +1,19 @@
+/*
+ * Compute MD5 checksum of strings according to the
+ * definition of MD5 in RFC 1321 from April 1992.
+ *
+ * Written by Ulrich Drepper <drepper@gnu.ai.mit.edu>, 1995.
+ *
+ * Copyright (C) 1995-1999 Free Software Foundation, Inc.
+ * Copyright (C) 2001 Manuel Novoa III
+ * Copyright (C) 2003 Glenn L. McGrath
+ * Copyright (C) 2003 Erik Andersen
+ *
+ * Licensed under GPLv2 or later, see file LICENSE in this source tree.
+ */
+
+// MD5 computation for host side Ethernet downloader
+
 #ifndef HASH_MD5_H
 #define HASH_MD5_H
 

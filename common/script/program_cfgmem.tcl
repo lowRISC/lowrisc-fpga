@@ -1,5 +1,8 @@
+# See LICENSE.Cambridge for license details.
+# script to burn configuration memory into the quad-SPI memory
+
 # Xilinx Vivado script
-# Version: Vivado 2015.4
+# Version: Vivado 2018.1
 # Function:
 #   Download bitstream to QSPI
 
