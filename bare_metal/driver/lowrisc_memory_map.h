@@ -19,6 +19,7 @@ extern volatile uint64_t *const sd_base;
 extern volatile uint64_t *const sd_bram;
 extern volatile uint16_t *const hid_vga_ptr;
 extern volatile uint64_t *const hid_reg_ptr;
+extern volatile uint64_t *const hid_fb_ptr;
 extern volatile uint8_t  *const hid_font_ptr;
 extern volatile uint64_t *const uart_base;
 extern volatile uint64_t *const eth_base;
@@ -33,6 +34,7 @@ enum { clint_base_addr = 0x02000000,
         keyb_base_addr = 0x40030000, // These have been relocated
         uart_base_addr = 0x40034000,
          vga_base_addr = 0x40038000,
+          fb_base_addr = 0x40040000,
         ddr_base_addr  = 0x80000000
       };
 

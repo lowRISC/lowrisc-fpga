@@ -29,8 +29,8 @@ void hid_console_putchar(unsigned char ch)
           hid_vga_ptr[addr_int] = blank;
       addr_int = LOWRISC_MEM-128;
     }
-  hid_vga_ptr[LOWRISC_REGS+LOWRISC_REGS_XCUR] = addr_int & 127;
-  hid_vga_ptr[LOWRISC_REGS+LOWRISC_REGS_YCUR] = addr_int >> 7;
+  hid_reg_ptr[LOWRISC_REGS_XCUR] = addr_int & 127;
+  hid_reg_ptr[LOWRISC_REGS_YCUR] = addr_int >> 7;
 }
 
 void uart_console_putchar(unsigned char ch)

@@ -27,6 +27,8 @@ volatile uint64_t *const uart_base = (uint64_t *)uart_base_addr;
 volatile uint16_t *const hid_vga_ptr = (uint16_t *)vga_base_addr;
 // VGA tuning registers
 volatile uint64_t *const hid_reg_ptr = (volatile uint64_t *)(vga_base_addr+16384);
+// VGA frame buffer
+volatile uint64_t *const hid_fb_ptr = (volatile uint64_t *)(fb_base_addr);
 // Downloadable font pointer
 volatile uint8_t *const hid_font_ptr = (volatile uint8_t *)(vga_base_addr+24576);
 // HID keyboard

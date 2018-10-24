@@ -653,16 +653,16 @@ int main()
   //  enum {range=4096};  
   //  enum {range=8192};  
   //  enum {range=16384};  
-  //  enum {range=65536};
+      enum {range=65536};
   //  enum {range=262144};
-    enum {range=1048576};
+  //  enum {range=1048576};
   //  enum {range=1<<30};
     hid_send_string("\nBare metal DRAM test\n");
     printf("memtester version " __version__ " (%d-bit)\n", UL_LEN);
     printf("Copyright (C) 2001-2012 Charles Cazabon.\n");
     printf("Licensed under the GNU General Public License version 2 (only).\n");
     printf("\n");
-    testrange((void volatile *) (ddr_base_addr), range, 1, 1);
+    testrange((void volatile *) (fb_base_addr), range, 1, 1);
 }
 
 #if 0
