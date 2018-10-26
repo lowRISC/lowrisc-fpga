@@ -7,7 +7,7 @@ static int addr_int = 0;
 
 void hid_console_putchar(unsigned char ch)
 {
-  int lmt, blank = ' '|0xF00;
+  int lmt, blank = ' '|0x8F00;
   switch(ch)
     {
     case 8: case 127: if (addr_int & 127) hid_vga_ptr[--addr_int] = blank; break;
@@ -22,7 +22,7 @@ void hid_console_putchar(unsigned char ch)
   if (addr_int >= LOWRISC_MEM)
     {
       // this is where we scroll
-      for (addr_int = 0; addr_int < LOWRISC_MEM; addr_int++)
+      for (addr_int = LOWRISC_START; addr_int < LOWRISC_MEM; addr_int++)
         if (addr_int < LOWRISC_MEM-128)
           hid_vga_ptr[addr_int] = hid_vga_ptr[addr_int+128];
         else
@@ -44,6 +44,7 @@ void hid_init(void *base)
 {
   int i,j;
   enum {width=1024, height=768};
+  addr_int = LOWRISC_START;
   hid_reg_ptr[LOWRISC_REGS_CURSV] = 10;
   hid_reg_ptr[LOWRISC_REGS_XCUR] = 0;
   hid_reg_ptr[LOWRISC_REGS_YCUR] = 32;
@@ -58,10 +59,10 @@ void hid_init(void *base)
   hid_reg_ptr[LOWRISC_REGS_HPIXSTOP ] = 128*3+256*6;
   hid_reg_ptr[LOWRISC_REGS_HPIX ] = 5;
   hid_reg_ptr[LOWRISC_REGS_VPIX ] = 11; // squashed vertical display uses 10
-  hid_reg_ptr[LOWRISC_REGS_PALETTE +     0] = 0x000000;
-  hid_reg_ptr[LOWRISC_REGS_PALETTE +     1] = 0x0000AA;
-  hid_reg_ptr[LOWRISC_REGS_PALETTE +     2] = 0x00AA00;
-  hid_reg_ptr[LOWRISC_REGS_PALETTE +     3] = 0x00AAAA;
+  hid_reg_ptr[LOWRISC_REGS_PALETTE +     0] = 0x20272D;
+  hid_reg_ptr[LOWRISC_REGS_PALETTE +     1] = 0xE0354F;
+  hid_reg_ptr[LOWRISC_REGS_PALETTE +     2] = 0xE9374F;
+  hid_reg_ptr[LOWRISC_REGS_PALETTE +     3] = 0xE1E6E8;
   hid_reg_ptr[LOWRISC_REGS_PALETTE +     4] = 0xAA0000;
   hid_reg_ptr[LOWRISC_REGS_PALETTE +     5] = 0xAA00AA;
   hid_reg_ptr[LOWRISC_REGS_PALETTE +     6] = 0xAA5500;
@@ -76,7 +77,7 @@ void hid_init(void *base)
   hid_reg_ptr[LOWRISC_REGS_PALETTE +    15] = 0xFFFFFF;
   for (i = 0; i <= 127; i++)
     {
-      char *zptr = zifu + (i) * 12;
+      const char *zptr = zifu + (i) * 12;
       for (j = 0; j < 12; j++)
         hid_font_ptr[16*i+j] = (0xFC & *zptr++) >> 1;
       for (j = 12; j < 16; j++)
@@ -84,6 +85,23 @@ void hid_init(void *base)
     }
   for (j = 0; j < 16; j++)
     hid_font_ptr[16*i+j] = 0xFF;
+  for (i = 0; i < 768*32; i++)
+    hid_fb_ptr[i] = 0;
+  hid_reg_ptr[LOWRISC_REGS_MODE] = 2;
+  for (i = 0; i < 32; i++)
+    {
+      for (j = 0; j < 128; j++)
+        {
+          if (j < 85)
+            hid_vga_ptr[128*i+j] = 0x8080|(i<<8);
+          else if (j < 100)
+            hid_vga_ptr[128*i+j] = 0x80;
+          else
+            hid_vga_ptr[128*i+j] = 0x80|(i<<8);
+        }
+    }
+  draw_logo();
+  hid_reg_ptr[LOWRISC_REGS_MODE] = 1;  
 }
 
 void hid_send_irq(uint8_t data)
@@ -143,7 +161,7 @@ int puts(const char *str) {
   return 0;
 }
 
-char zifu[]={
+const char zifu[]={
 /*-- ^@  --*/
 0x00,0x00,0x20,0x60,0xfc,0xfc,0x60,0x20,0x00,0x00,0x00,0x00,
 /*-- ^A  --*/

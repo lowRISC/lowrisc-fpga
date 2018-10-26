@@ -450,7 +450,7 @@ dhcp_request(u_int8_t *mac, u_int32_t req_ip, u_int32_t server_id)
 /*
  * Send Generic UDP packet
  */
-int udp_send(const u_int8_t *mac, void *msg, int payload_size, uint16_t client, uint16_t server, uint32_t srcaddr, uint32_t dstaddr, const u_int8_t *destmac)
+int udp_send(const u_int8_t *mac, const void *msg, int payload_size, uint16_t client, uint16_t server, uint32_t srcaddr, uint32_t dstaddr, const u_int8_t *destmac)
 {
     int len = 0;
     u_char packet[2048];

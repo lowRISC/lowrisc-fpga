@@ -20,7 +20,7 @@ void *memcpy(void *o, const void *i, size_t n)
 
   //  printf("memcpy(%x,%x,%x);\n", o, i, n);
   while (n--) *optr++ = *iptr++;
-  return optr;
+  return o;
 }
 
 size_t strlen (const char *str)

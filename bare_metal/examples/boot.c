@@ -148,32 +148,6 @@ char *env_get(const char *name)
   return (char *)0;
 }
 
-void *malloc(size_t len)
-{
-  static unsigned long rused = 0;
-  char *rd = rused + (char *)(ddr_base_addr+0x6800000);
-  rused += ((len-1)|7)+1;
-  return rd;
-}
-
-void *calloc(size_t nmemb, size_t size)
-{
-  size_t siz = nmemb*size;
-  char *ptr = malloc(siz);
-  if (ptr)
-    {
-      memset(ptr, 0, siz);
-      return ptr;
-    }
-  else
-    return (void*)0;
-}
-
-void free(void *ptr)
-{
-
-}
-
 int init_mmc_standalone(int sd_base_addr);
 
 DSTATUS disk_initialize (uint8_t pdrv)

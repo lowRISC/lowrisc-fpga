@@ -21,42 +21,36 @@ int main() {
   int scroll = 0;
   hid_send_string("\nBare metal HID access\n");
   printf("Hello World! "__DATE__" "__TIME__"\n");
+  hid_reg_ptr[LOWRISC_REGS_MODE] = 1;
   for (i = 0; i < 32; i++)
     {
       for (j = 0; j < 128; j++)
         hid_vga_ptr[128*i+j] = 0x8080|(i<<8);
     }
-#if 0
-  for (i = 0; i < 768; i++)
+  for (i = 0; i < 1024; i++)
     {
       for (j = 0; j < 32; j++)
         {
-          hid_fb_ptr[i*32+j] = 0xFFFFFFFFFFFFFFFFULL;
+          hid_fb_ptr[i*32+j] = 0xF0000005ULL;
         }
     }
-#endif  
-  for (i = 0; i < 768; i++)
-    {
-      hid_fb_ptr[i*32+i] = 0x1;
-    }
-  for (i = 0; i < 768; i++)
-    {
-      for (j = 0; j < 32; j++)
-        {
-          hid_fb_ptr[i*32+j] = 0x1;
-        }
-    }
-  for (i = 0; i < 768; i+=32)
+  for (i = 0; i < 1024; i+=32)
     {
       for (j = 0; j < 32; j++)
         {
           hid_fb_ptr[i*32+j] = ~(0LL);
         }
     }
-
+  for (i = 0; i < 1024; i++)
+    {
+      hid_fb_ptr[i*32+i/16] = 0xAULL << ((i&15)<<2);
+    }
+  for (i = 0; i < 256; i++)
+    {
+      hid_fb_ptr[i*32+i/16+16] = 0x5ULL << ((i&15)<<2);
+    }  
   hid_reg_ptr[LOWRISC_REGS_HPIX] = width;
   hid_reg_ptr[LOWRISC_REGS_VPIX] = height;
-  hid_reg_ptr[LOWRISC_REGS_HDIV] = 1;
   for (i = 0; i < 32; i++)
     {
       hid_vga_ptr[128*i+100] = i/10+'0'+0x8F00;
@@ -64,11 +58,12 @@ int main() {
     }
   for (i = 0; i < 32; i++)
     {
-      for (j = 0; j < 16; j++)
+      for (j = 96; j < 112; j++)
         hid_vga_ptr[128*(i+14)+j] = 128|(i<<8);
       hid_vga_ptr[128*(i+14)+j] = i/10+'0'+0x8F00;
       hid_vga_ptr[128*(i+14)+j+1] = i%10+'0'+0x8F00;
     }
+  draw_logo();
   for (;;)
     {
       int scan, ascii, event = *keyb_base;

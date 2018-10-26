@@ -653,7 +653,8 @@ int main()
   //  enum {range=4096};  
   //  enum {range=8192};  
   //  enum {range=16384};  
-      enum {range=65536};
+  //  enum {range=65536};
+      enum {range=196608};
   //  enum {range=262144};
   //  enum {range=1048576};
   //  enum {range=1<<30};
@@ -662,6 +663,7 @@ int main()
     printf("Copyright (C) 2001-2012 Charles Cazabon.\n");
     printf("Licensed under the GNU General Public License version 2 (only).\n");
     printf("\n");
+    hid_reg_ptr[LOWRISC_REGS_MODE] = 1;
     testrange((void volatile *) (fb_base_addr), range, 1, 1);
 }
 

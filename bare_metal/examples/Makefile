@@ -31,9 +31,9 @@ RISCV_LINK_OPTS = -nostdlib -nostartfiles -ffast-math -Xlinker -M=mapfile
 
 default: all
 
-TARGETS = dram hello sdcard trace jump flash tag selftest eth
+TARGETS = dram hello sdcard trace jump flash tag selftest eth lowrisc
 
-DRIVER_TARGETS = syscalls hid memory memcmp memset strcmp strcpy strnlen wordcopy elf sdhci-minion-hash-md5 mini-printf random dhcp-client ethlib stublib # minion_helper diskio ff 
+DRIVER_TARGETS = syscalls hid memory memcmp memset strcmp strcpy strnlen wordcopy elf sdhci-minion-hash-md5 mini-printf random dhcp-client ethlib stublib logo # minion_helper diskio ff 
 
 HEADERS += $(wildcard $(DRIVER_DIR)/*.h)
 
@@ -81,11 +81,11 @@ $(DUMP_FILES): %.dump:%.riscv
 junk += $(RISCV_FILES) $(HEX_FILES) $(DUMP_FILES)
 
 U = lib/strto.c  lib/time.c  lib/div64.c  lib/ctype.c   drivers/block/blk_legacy.c  drivers/mmc/lowrisc_mmc.c  drivers/mmc/mmc_legacy.c \
-drivers/mmc/mmc.c lib/string.c  lib/display_options.c ../driver/mini-printf.c ../driver/hid.c ../driver/syscalls.c boot.c ../driver/ff.c \
+drivers/mmc/mmc.c lib/string.c  lib/display_options.c ../driver/mini-printf.c ../driver/hid.c ../driver/logo.c ../driver/syscalls.c boot.c ../driver/ff.c \
 ../driver/memory.c ../driver/sdhci-minion-hash-md5.c ../driver/elf.c ../driver/ethlib.c ../driver/dhcp-client.c ../driver/random.c \
 # ../driver/minion_helper.c
 
-MMC = blk_legacy.o crt.o ctype.o display_options.o div64.o elf.o ff.o hid.o lowrisc_mmc.o memory.o mini-printf.o mmc_legacy.o mmc.o sdhci-minion-hash-md5.o string.o strto.o syscalls.o time.o ethlib.o dhcp-client.o random.o
+MMC = blk_legacy.o crt.o ctype.o display_options.o div64.o elf.o ff.o hid.o logo.o lowrisc_mmc.o memory.o mini-printf.o mmc_legacy.o mmc.o sdhci-minion-hash-md5.o string.o strto.o syscalls.o time.o ethlib.o dhcp-client.o random.o
 
 boot: $U
 	riscv64-unknown-elf-gcc -c -o crt.o ../driver/crt.S

@@ -10,6 +10,7 @@
 #define HID_DIP 0x401F
 
 #define LOWRISC_MEM	4096
+#define LOWRISC_START	3072
 #define LOWRISC_REGS	8192
 #define LOWRISC_COLUMNS	128
 #define LOWRISC_ROWS	32
@@ -31,7 +32,7 @@
 #define LOWRISC_REGS_HDIV      (17)
 #define LOWRISC_REGS_PALETTE   (32)
 
-extern char zifu[];
+extern const char zifu[];
 
 extern void hid_init(void *base);
 extern void hid_send(uint8_t);
@@ -43,5 +44,6 @@ extern uint8_t hid_read_irq();
 extern uint8_t hid_check_read_irq();
 extern void hid_enable_read_irq();
 extern void hid_disable_read_irq();
+extern void draw_logo(void);
 
 #endif
