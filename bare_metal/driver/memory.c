@@ -67,6 +67,14 @@ void write_led(uint32_t data)
   sd_base[15] = data;
 }
 
+// legacy function
+uint32_t sd_resp(int sel)
+{
+  volatile uint64_t *sd_base = (volatile uint64_t *)sd_base_addr;
+  uint32_t rslt = sd_base[sel];
+  return rslt;
+}
+
 void *malloc(size_t len)
 {
   static unsigned long rused = 0;

@@ -828,14 +828,6 @@ int board_mmc_init(bd_t *bis)
         return lowrisc_init(sd_base_addr, 0, SH_SDHI_QUIRK_64BIT_BUF);
 }
 
-// legacy function
-uint32_t sd_resp(int sel)
-{
-  volatile uint64_t *sd_base = (volatile uint64_t *)sd_base_addr;
-  uint32_t rslt = sd_base[sel];
-  return rslt;
-}
-
 int board_mmc_getcd(struct mmc *mmc)                                                                                                                    
 {
   struct lowrisc_sd_host *host = mmc_priv(mmc);

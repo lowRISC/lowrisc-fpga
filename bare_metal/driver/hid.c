@@ -1,6 +1,7 @@
 // See LICENSE.Cambridge for license details.
 
 #include "hid.h"
+#include "minion_lib.h"
 #include "lowrisc_memory_map.h"
 
 static int addr_int = 0;
@@ -42,8 +43,8 @@ void uart_console_putchar(unsigned char ch)
 
 void hid_init(void *base)
 {
-  int i,j;
   enum {width=1024, height=768};
+  int i, j, ghlimit = 40;
   addr_int = LOWRISC_START;
   hid_reg_ptr[LOWRISC_REGS_CURSV] = 10;
   hid_reg_ptr[LOWRISC_REGS_XCUR] = 0;
@@ -59,6 +60,7 @@ void hid_init(void *base)
   hid_reg_ptr[LOWRISC_REGS_HPIXSTOP ] = 128*3+256*6;
   hid_reg_ptr[LOWRISC_REGS_HPIX ] = 5;
   hid_reg_ptr[LOWRISC_REGS_VPIX ] = 11; // squashed vertical display uses 10
+  hid_reg_ptr[LOWRISC_REGS_GHLIMIT] = ghlimit;
   hid_reg_ptr[LOWRISC_REGS_PALETTE +     0] = 0x20272D;
   hid_reg_ptr[LOWRISC_REGS_PALETTE +     1] = 0xE0354F;
   hid_reg_ptr[LOWRISC_REGS_PALETTE +     2] = 0xE9374F;
@@ -92,15 +94,15 @@ void hid_init(void *base)
     {
       for (j = 0; j < 128; j++)
         {
-          if (j < 85)
+          if (j < 108)
             hid_vga_ptr[128*i+j] = 0x8080|(i<<8);
-          else if (j < 100)
+          else if (j < 118)
             hid_vga_ptr[128*i+j] = 0x80;
           else
             hid_vga_ptr[128*i+j] = 0x80|(i<<8);
         }
     }
-  draw_logo();
+  draw_logo(ghlimit);
   hid_reg_ptr[LOWRISC_REGS_MODE] = 1;  
 }
 

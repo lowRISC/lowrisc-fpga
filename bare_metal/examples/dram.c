@@ -665,6 +665,7 @@ int main()
     printf("\n");
     hid_reg_ptr[LOWRISC_REGS_MODE] = 1;
     testrange((void volatile *) (fb_base_addr), range, 1, 1);
+    draw_logo(40);
 }
 
 #if 0

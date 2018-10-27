@@ -30,6 +30,7 @@
 #define LOWRISC_REGS_HPIX      (15)
 #define LOWRISC_REGS_VPIX      (16)
 #define LOWRISC_REGS_HDIV      (17)
+#define LOWRISC_REGS_GHLIMIT   (18)
 #define LOWRISC_REGS_PALETTE   (32)
 
 extern const char zifu[];
@@ -44,6 +45,6 @@ extern uint8_t hid_read_irq();
 extern uint8_t hid_check_read_irq();
 extern void hid_enable_read_irq();
 extern void hid_disable_read_irq();
-extern void draw_logo(void);
+extern void draw_logo(int);
 
 #endif
