@@ -87,7 +87,7 @@ void *sbrk(size_t len)
 
 
 #define PORT 8888   //The port on which to send data
-#define CHUNK_SIZE 1024
+#define CHUNK_SIZE 1448
 
 void process_ip_packet(const u_char *, int);
 void print_ip_packet(const u_char * , int);
@@ -237,13 +237,13 @@ static int copyin_pkt(void)
   return len;
 }
 
-// max size of file image is 10M
-#define MAX_FILE_SIZE (10<<20)
+// max size of file image is 12M
+#define MAX_FILE_SIZE (CHUNK_SIZE*sizeof(uint64_t)*sizeof_maskarray)
 
 // size of DDR RAM (128M for NEXYS4-DDR) 
 #define DDR_SIZE 0x8000000
 
-enum {sizeof_maskarray=MAX_FILE_SIZE/CHUNK_SIZE/8};
+enum {sizeof_maskarray=CHUNK_SIZE};
 
 static int oldidx;
 static uint64_t maskarray[sizeof_maskarray/sizeof(uint64_t)];
