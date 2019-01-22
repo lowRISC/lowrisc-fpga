@@ -111,15 +111,6 @@ in_cksum(unsigned short *addr, int len)
     return (answer);
 }
 
-void lite_queue(const void *buf, int length)
-{
-  int i, rslt;
-  int rnd = ((length-1|7)+1);
-  memcpy(txbuf[txhead].alloc, buf, length);
-  txbuf[txhead].len = length;
-  txhead = (txhead+1) % queuelen;
-}
-
 /*
  * This function will be called for any incoming DHCP responses
  */
@@ -237,6 +228,8 @@ void dhcp_input(dhcp_t *dhcp, u_int8_t *mac, int *offcount, int *ackcount)
         break;
       default:
         printf("Unhandled DHCP opcode %d\n", code);
+        for (;;)
+          ;
       }
   } while (code != MESSAGE_TYPE_END);
   //  printf("DHCP process exited\n");
@@ -279,7 +272,8 @@ static void
 ip_output(struct ip *ip_header, int *len, uint32_t srcaddr, uint32_t dstaddr)
 {
   u_short nlen, nid;
-
+  u_long ttl;
+  
     *len += sizeof(struct ip);
 
     ip_header->ip_hl = 5;
@@ -290,7 +284,8 @@ ip_output(struct ip *ip_header, int *len, uint32_t srcaddr, uint32_t dstaddr)
     memcpy(&(ip_header->ip_len), &nlen, sizeof(u_short));
     memcpy(&(ip_header->ip_id), &nid, sizeof(u_short));
     ip_header->ip_off = 0;
-    ip_header->ip_ttl = 16;
+    ttl = 16;
+    memcpy(&(ip_header->ip_ttl), &ttl, sizeof(u_long));
     ip_header->ip_p = IPPROTO_UDP;
     ip_header->ip_sum = 0;
     memcpy(&(ip_header->ip_src.s_addr), &srcaddr, sizeof(uint32_t));
@@ -492,4 +487,70 @@ int dhcp_main(u_int8_t mac[6])
         printf("Waiting for DHCP_OFFER\n");
       }
     return result;
+}
+
+unsigned short csum(uint8_t *buf, int nbytes)
+    {       //
+            unsigned long sum;
+            for(sum=0; nbytes>0; nbytes-=2)
+              {
+                unsigned short src;
+                memcpy(&src, buf, 2);
+                buf+=2;
+                sum += ntohs(src);
+              }
+            sum = (sum >> 16) + (sum & 0xffff);
+            sum += (sum >> 16);
+            return (unsigned short)(~sum);
+    }
+
+void PrintData (const u_char * data , int Size)
+{
+    int i , j;
+    for(i=0 ; i < Size ; i++)
+    {
+        if( i!=0 && i%16==0)
+        {
+            printf("         ");
+            for(j=i-16 ; j<i ; j++)
+            {
+                if(data[j]>=32 && data[j]<=128)
+                    printf("%c",(unsigned char)data[j]);
+                else printf(".");
+            }
+            printf("\n");
+        }
+        if(i%16==0) printf("   ");
+            printf(" %02X",(unsigned int)data[i]);
+        if( i==Size-1)
+        {
+            for(j=0;j<15-i%16;j++)
+            {
+              printf("   ");
+            }
+            printf("         ");
+            for(j=i-i%16 ; j<=i ; j++)
+            {
+                if(data[j]>=32 && data[j]<=128)
+                {
+                  printf("%c",(unsigned char)data[j]);
+                }
+                else
+                {
+                  printf(".");
+                }
+            }
+            printf("\n" );
+        }
+    }
+}
+
+void process_udp_packet(const u_char *data, int ulen, uint16_t peer_port, uint32_t peer_ip, const u_char *peer_addr)
+{
+  uint16_t idx;	
+  static uint16_t maxidx;
+  uint32_t srcaddr;
+  memcpy(&srcaddr, &uip_hostaddr, 4);
+  printf("UDP packet length %d sent to port %d\n", ulen, peer_port);
+  PrintData(data, ulen);
 }

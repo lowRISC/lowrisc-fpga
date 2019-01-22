@@ -15,9 +15,10 @@
   .text
   .globl _start
 _start:
+/*
   la t0, trap_entry
   csrw mtvec, t0
-
+*/
   li  x1, 0
   li  x2, 0
   li  x3, 0
@@ -49,7 +50,7 @@ _start:
   li  x29,0
   li  x30,0
   li  x31,0
-
+/*
   li t0, MSTATUS_FS;   csrs mstatus, t0    # enable FPU
   li t0, MSTATUS_XS;   csrs mstatus, t0    # enable accelerator
 
@@ -121,7 +122,7 @@ _start:
   # for now, assume only 1 core
   li a1, 1
 1:bgeu a0, a1, 1b
-
+*/
   li a1, 0x40010000
   add sp, a1, -8
 

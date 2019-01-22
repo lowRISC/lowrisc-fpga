@@ -173,24 +173,6 @@ long handle_trap(long cause, long epc, long regs[32])
     tohost_exit(1337);
 }
 
-void __attribute__((weak)) thread_entry(int cid, int nc)
-{
-  // multi-threaded programs override this function.
-  // for the case of single-threaded programs, only let core 0 proceed.
-  while (cid != 0);
-}
-
-static void init_tls()
-{
-  register void* thread_pointer asm("tp");
-  extern char _tls_data;
-  extern __thread char _tdata_begin, _tdata_end, _tbss_end;
-  size_t tdata_size = &_tdata_end - &_tdata_begin;
-  memcpy(thread_pointer, &_tls_data, tdata_size);
-  size_t tbss_size = &_tbss_end - &_tdata_end;
-  memset(thread_pointer + tdata_size, 0, tbss_size);
-}
-
 size_t err = 0, eth = 0, ddr = 0, rom = 0, bram = 0, intc = 0, clin = 0, hid = 0;
 
 uint16_t __bswap_16(uint16_t x)
@@ -207,68 +189,10 @@ uint32_t __bswap_32(uint32_t x)
 
 uip_eth_addr mac_addr;
 
-void init_plic(void)
-{
-  int i;
-  for (i = 1; i <= 64; i++)
-    {
-      plic[i] = 1;
-    }
-  for (i = 1; i <= 64; i++)
-    {
-      plic[0x800+i/32] |= 1<<(i&31);
-    }
-  plic[0x80000] = 0;
-  for (i = 0; i < 4; i++)
-    printf("%x: %x\n", i, plic[i]);
-  for (i = 0x800; i < 0x804; i++)
-    printf("%x: %x\n", i, plic[i]);
-}
-
 void _init(int cid, int nc)
 {
-  int sw;
-  uint32_t macaddr_lo, macaddr_hi;
   extern int main(int, char **);
-  extern char _bss[], _end[];
-  size_t unknown = 0;
-  char *unknownstr, *config = (char *)0x10000;
-  size_t bsslen = _end - _bss;
-  memset(_bss, 0, bsslen);
-  /*
-  init_tls();
-  thread_entry(cid, nc);
-  */
-  hid_init((void*)vga_base_addr);
-  sw = sd_base[31];
-  mac_addr.addr[0] = (uint8_t)0xEE;
-  mac_addr.addr[1] = (uint8_t)0xE1;
-  mac_addr.addr[2] = (uint8_t)0xE2;
-  mac_addr.addr[3] = (uint8_t)0xE3;
-  mac_addr.addr[4] = (uint8_t)0xE4;
-  mac_addr.addr[5] = (uint8_t)(0xE0|(sw >> 12));
-
-  memcpy (&macaddr_lo, mac_addr.addr+2, sizeof(uint32_t));
-  memcpy (&macaddr_hi, mac_addr.addr+0, sizeof(uint16_t));
-  eth_base[MACLO_OFFSET>>3] = __bswap_32(macaddr_lo);
-  eth_base[MACHI_OFFSET>>3] = __bswap_16(macaddr_hi);
-
-  macaddr_lo = eth_base[MACLO_OFFSET>>3];
-  macaddr_hi = eth_base[MACHI_OFFSET>>3] & MACHI_MACADDR_MASK;
-  printf("Calling main with MAC = %x:%x\n", macaddr_hi&MACHI_MACADDR_MASK, macaddr_lo);
- 
-  init_plic();
-  // only single-threaded programs should ever get here.
   int ret = main(0, 0);
-
-  char buf[NUM_COUNTERS * 32] __attribute__((aligned(64)));
-  char* pbuf = buf;
-  for (int i = 0; i < NUM_COUNTERS; i++)
-    if (counters[i])
-      pbuf += sprintf(pbuf, "%s = %d\n", counter_names[i], counters[i]);
-  if (pbuf != buf)
-    hid_send_string(buf);
-
   printf("normal exit reached, code=%d\n", ret);
   for(;;);
 }

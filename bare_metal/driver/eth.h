@@ -4,6 +4,7 @@
 #define ETH_HEADER_H
 
 #include <stdint.h>
+#include <sys/types.h>
 
 /* Register offsets (in bytes) for the LowRISC Core */
 #define TXBUFF_OFFSET       0x1000          /* Transmit Buffer */
@@ -178,7 +179,7 @@ struct udphdr
 
 typedef unsigned int u_int8_t __attribute__ ((__mode__ (__QI__)));
 typedef unsigned int u_int16_t __attribute__ ((__mode__ (__HI__)));
-typedef unsigned int u_int32_t __attribute__ ((__mode__ (__SI__)));
+//typedef unsigned int u_int32_t __attribute__ ((__mode__ (__SI__)));
 typedef unsigned int u_int64_t __attribute__ ((__mode__ (__DI__)));
 typedef unsigned short int u_short;
 
@@ -215,6 +216,20 @@ struct ip
 #define DHCP_SERVER_PORT    67
 #define DHCP_CLIENT_PORT    68
 
+/* General Ethernet Definitions */
+#define ARP_PACKET_SIZE         28      /* Max ARP packet size */
+#define HEADER_IP_LENGTH_OFFSET 16      /* IP Length Offset */
+
+#define ETH_DATA_LEN    1500            /* Max. octets in payload        */
+#define ETH_P_IP        0x0800          /* Internet Protocol packet     */
+#define ETH_HLEN        14              /* Total octets in header.       */
+#define ETH_FCS_LEN     4               /* Octets in the FCS             */
+#define ETH_P_ARP       0x0806          /* Address Resolution packet    */
+#define ETH_P_IPV6      0x86DD          /* IPv6 */
+#define ETH_FRAME_LEN   1514            /* Max. octets in frame sans FCS */
+
+extern uip_eth_addr mac_addr;
+
 typedef uip_eth_addr uip_lladdr_t;
 typedef uint8_t u_char;
 
@@ -242,7 +257,7 @@ uint32_t __bswap_32(uint32_t x);
 
 typedef unsigned int __u_int;
 typedef __u_int bpf_u_int32;
-typedef long int __time_t;
+// typedef long int __time_t;
 typedef long int __suseconds_t;
 typedef unsigned int u_int16_t __attribute__ ((__mode__ (__HI__)));
 
@@ -301,9 +316,12 @@ typedef struct outqueue_t {
 } outqueue_t;
 
 extern uip_ipaddr_t uip_hostaddr, uip_draddr, uip_netmask;
+
+/*
 extern volatile int rxhead, rxtail, txhead, txtail;
 extern inqueue_t *rxbuf;
 extern outqueue_t *txbuf;
+*/
 
 int dhcp_main(u_int8_t mac[6]);
 void lite_queue(const void *buf, int length);
@@ -311,5 +329,12 @@ void dhcp_input(dhcp_t *dhcp, u_int8_t mac[6], int *offcount, int *ackcount);
 int udp_send(const u_int8_t *mac, void *msg, int payload_size, uint16_t client, uint16_t server, uint32_t srcaddr, uint32_t dstaddr, const u_int8_t *destmac);
 void loopback_test(int loops, int sim);
 int eth_main(void);
+void process_ip_packet(const u_char *, int);
+void print_ip_packet(const u_char * , int);
+void print_tcp_packet(const u_char * , int);
+void process_udp_packet(const u_char *, int, uint16_t, uint32_t, const u_char *);
+void PrintData (const u_char * , int);
+unsigned short csum(uint8_t *buf, int nbytes);
+void lite_queue(const void *buf, int length);
 
 #endif

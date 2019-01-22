@@ -32,7 +32,7 @@
  */
 
 // An ethernet loader program
-//#define VERBOSE
+#define VERBOSE
 #include "encoding.h"
 #include "bits.h"
 #include "elfriscv.h"
@@ -94,20 +94,6 @@ static inline uint64_t eth_read(size_t addr)
   return retval;
 }
 
-/* General Ethernet Definitions */
-#define ARP_PACKET_SIZE		28	/* Max ARP packet size */
-#define HEADER_IP_LENGTH_OFFSET	16	/* IP Length Offset */
-
-#define ETH_DATA_LEN	1500		/* Max. octets in payload	 */
-#define ETH_P_IP	0x0800		/* Internet Protocol packet	*/
-#define ETH_HLEN	14		/* Total octets in header.	 */
-#define ETH_FCS_LEN	4		/* Octets in the FCS		 */
-#define ETH_P_ARP	0x0806		/* Address Resolution packet	*/
-#define ETH_P_IPV6      0x86DD          /* IPv6 */
-#define ETH_FRAME_LEN	1514		/* Max. octets in frame sans FCS */
-
-extern uip_eth_addr mac_addr;
-
 void *mysbrk(size_t len)
 {
   static unsigned long rused = 0;
@@ -119,12 +105,6 @@ void *mysbrk(size_t len)
 
 #define PORT 8888   //The port on which to send data
 #define CHUNK_SIZE 1464
-
-void process_ip_packet(const u_char *, int);
-void print_ip_packet(const u_char * , int);
-void print_tcp_packet(const u_char * , int);
-void process_udp_packet(const u_char *, int, uint16_t, uint32_t, const u_char *);
-void PrintData (const u_char * , int);
 
 #define min(x,y) (x) < (y) ? (x) : (y)
 
@@ -252,21 +232,6 @@ void external_interrupt(void)
     //  "The checksum field is the 16 bit one's complement of the one's
     //  complement sum of all 16 bit words in the header.  For purposes of
     //  computing the checksum, the value of the checksum field is zero."
-
-static unsigned short csum(uint8_t *buf, int nbytes)
-    {       //
-            unsigned long sum;
-            for(sum=0; nbytes>0; nbytes-=2)
-              {
-                unsigned short src;
-                memcpy(&src, buf, 2);
-                buf+=2;
-                sum += ntohs(src);
-              }
-            sum = (sum >> 16) + (sum & 0xffff);
-            sum += (sum >> 16);
-            return (unsigned short)(~sum);
-    }
 
 static uintptr_t old_mstatus, old_mie;
 

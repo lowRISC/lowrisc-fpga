@@ -42,48 +42,6 @@ void uart_console_putchar(unsigned char ch)
 
 void hid_init(void *base)
 {
-  int i,j;
-  enum {width=1024, height=768};
-  hid_reg_ptr[LOWRISC_REGS_CURSV] = 10;
-  hid_reg_ptr[LOWRISC_REGS_XCUR] = 0;
-  hid_reg_ptr[LOWRISC_REGS_YCUR] = 32;
-  hid_reg_ptr[LOWRISC_REGS_HSTART] = width*2;
-  hid_reg_ptr[LOWRISC_REGS_HSYN] = width*2+20;
-  hid_reg_ptr[LOWRISC_REGS_HSTOP] = width*2+51;
-  hid_reg_ptr[LOWRISC_REGS_VSTART] = height;
-  hid_reg_ptr[LOWRISC_REGS_VSTOP] = height+19;
-  hid_reg_ptr[LOWRISC_REGS_VPIXSTART ] = 16;
-  hid_reg_ptr[LOWRISC_REGS_VPIXSTOP ] = height+16;
-  hid_reg_ptr[LOWRISC_REGS_HPIXSTART ] = 128*3;
-  hid_reg_ptr[LOWRISC_REGS_HPIXSTOP ] = 128*3+256*6;
-  hid_reg_ptr[LOWRISC_REGS_HPIX ] = 5;
-  hid_reg_ptr[LOWRISC_REGS_VPIX ] = 11; // squashed vertical display uses 10
-  hid_reg_ptr[LOWRISC_REGS_PALETTE +     0] = 0x000000;
-  hid_reg_ptr[LOWRISC_REGS_PALETTE +     1] = 0x0000AA;
-  hid_reg_ptr[LOWRISC_REGS_PALETTE +     2] = 0x00AA00;
-  hid_reg_ptr[LOWRISC_REGS_PALETTE +     3] = 0x00AAAA;
-  hid_reg_ptr[LOWRISC_REGS_PALETTE +     4] = 0xAA0000;
-  hid_reg_ptr[LOWRISC_REGS_PALETTE +     5] = 0xAA00AA;
-  hid_reg_ptr[LOWRISC_REGS_PALETTE +     6] = 0xAA5500;
-  hid_reg_ptr[LOWRISC_REGS_PALETTE +     7] = 0xAAAAAA;
-  hid_reg_ptr[LOWRISC_REGS_PALETTE +     8] = 0x555555;
-  hid_reg_ptr[LOWRISC_REGS_PALETTE +     9] = 0x5555FF;
-  hid_reg_ptr[LOWRISC_REGS_PALETTE +    10] = 0x55FF55;
-  hid_reg_ptr[LOWRISC_REGS_PALETTE +    11] = 0x55FFFF;
-  hid_reg_ptr[LOWRISC_REGS_PALETTE +    12] = 0xFF5555;
-  hid_reg_ptr[LOWRISC_REGS_PALETTE +    13] = 0xFF55FF;
-  hid_reg_ptr[LOWRISC_REGS_PALETTE +    14] = 0xFFFF55;
-  hid_reg_ptr[LOWRISC_REGS_PALETTE +    15] = 0xFFFFFF;
-  for (i = 0; i <= 127; i++)
-    {
-      char *zptr = zifu + (i) * 12;
-      for (j = 0; j < 12; j++)
-        hid_font_ptr[16*i+j] = (0xFC & *zptr++) >> 1;
-      for (j = 12; j < 16; j++)
-        hid_font_ptr[16*i+j] = 0;
-    }
-  for (j = 0; j < 16; j++)
-    hid_font_ptr[16*i+j] = 0xFF;
 }
 
 void hid_send_irq(uint8_t data)
