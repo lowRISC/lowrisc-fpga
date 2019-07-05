@@ -2207,6 +2207,8 @@ uint8_t check_fs ( /* 0:Valid FAT-BS, 1:Valid BS but not FAT, 2:Not a BS, 3:Disk
   if (move_window(fs, sect) != FR_OK)       /* Load boot record */
     return 3;
 
+  printf("Checking for FAT at sector %d, pattern = %x\n", sect, LD_WORD(&fs->win[BS_55AA]));
+  
   if (LD_WORD(&fs->win[BS_55AA]) != 0xAA55) /* Check boot record signature (always placed at offset 510 even if the sector size is >512) */
     return 2;
 

@@ -178,6 +178,19 @@ int init_mmc_standalone(int sd_base_addr);
 
 DSTATUS disk_initialize (uint8_t pdrv)
 {
+  uint64_t stat;
+#if 0  
+  printf("Resetting SD-Core\n");
+  sd_base[3] = 0;
+  sd_base[3] = 8;
+  sd_base[3] = 0;
+  do
+    {
+      stat = sd_base[2];
+    }
+  while (32 & ~stat);
+  printf("SD-Core running, status = %x, init_state = %x\n", stat, sd_base[4]);
+#endif  
   return 0;
 }
 
@@ -229,18 +242,24 @@ DRESULT disk_read (uint8_t pdrv, uint8_t *buff, uint32_t sector, uint32_t count)
   uint64_t vec;
   uint64_t stat = 0xDEADBEEF;
   uint64_t mask = (1 << count) - 1;
-  sd_base[0] = sector*512;
+  sd_base[0] = sector;
   sd_base[1] = 0;
   sd_base[2] = count;
   sd_base[3] = 1;
-  sd_base[15] = 0x55;
-  while (sd_base[1] != (sector+count)*512)
+  sd_base[15] = sector;
+  sd_base[3] = 0;
+  do
     {
       stat = sd_base[2];
     }
+  while (16 & ~stat);
+  sd_base[15] = 0;
   vec = sd_base[3] & mask;
-  memcpy(buff, sd_base, sd_bram);
-  return stat = 0 && (vec==mask) ? FR_OK : FR_INT_ERR;
+  memcpy(buff, sd_bram, count*512);
+  if (vec==mask)
+    return FR_OK;
+  printf("Sector = %d, count = %d, err = %x\n", sector, count, vec);
+  return FR_INT_ERR;
 }
 
 DRESULT disk_write (uint8_t pdrv, const uint8_t *buff, uint32_t sector, uint32_t count)
