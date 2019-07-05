@@ -292,7 +292,7 @@ ip_output(struct ip *ip_header, int *len, uint32_t srcaddr, uint32_t dstaddr)
     ip_header->ip_off = 0;
     ip_header->ip_ttl = 16;
     ip_header->ip_p = IPPROTO_UDP;
-    ip_header->ip_sum = 0;
+    memset(&(ip_header->ip_sum), 0, sizeof(ip_header->ip_sum));
     memcpy(&(ip_header->ip_src.s_addr), &srcaddr, sizeof(uint32_t));
     memcpy(&(ip_header->ip_dst.s_addr), &dstaddr, sizeof(uint32_t));
 

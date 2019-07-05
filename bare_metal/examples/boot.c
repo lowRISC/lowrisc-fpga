@@ -105,7 +105,7 @@ int just_jump (void)
 
 int main (void)
 {
-  int i, sw = sd_resp(31);
+  int i, sw = 2;
 
   loopback_test(8, (sw & 0xF) == 0xF);
   
@@ -178,8 +178,6 @@ int init_mmc_standalone(int sd_base_addr);
 
 DSTATUS disk_initialize (uint8_t pdrv)
 {
-  printf("\nu-boot based first stage boot loader\n");
-  init_mmc_standalone(sd_base_addr);
   return 0;
 }
 
@@ -228,12 +226,21 @@ int do_size(void *cmdtp, int flag, int argc, char * const argv[], int fstype)
 
 DRESULT disk_read (uint8_t pdrv, uint8_t *buff, uint32_t sector, uint32_t count)
 {
-  while (count--)
+  uint64_t vec;
+  uint64_t stat = 0xDEADBEEF;
+  uint64_t mask = (1 << count) - 1;
+  sd_base[0] = sector*512;
+  sd_base[1] = 0;
+  sd_base[2] = count;
+  sd_base[3] = 1;
+  sd_base[15] = 0x55;
+  while (sd_base[1] != (sector+count)*512)
     {
-      read_block(buff, sector++);
-      buff += 512;
+      stat = sd_base[2];
     }
-  return FR_OK;
+  vec = sd_base[3] & mask;
+  memcpy(buff, sd_base, sd_bram);
+  return stat = 0 && (vec==mask) ? FR_OK : FR_INT_ERR;
 }
 
 DRESULT disk_write (uint8_t pdrv, const uint8_t *buff, uint32_t sector, uint32_t count)

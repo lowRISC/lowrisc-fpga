@@ -19,7 +19,7 @@ DRIVER_DIR = $(BASE_DIR)/../driver
 RISCV_PREFIX=riscv64-unknown-elf-
 RISCV_GCC = $(RISCV_PREFIX)gcc
 RISCV_DUMP = $(RISCV_PREFIX)objdump
-RISCV_GCC_OPTS = -static -std=gnu99 -g -Os -ffast-math -fno-common -fno-builtin-printf -mcmodel=medany -I$(DRIVER_DIR) -I$(BASE_DIR)
+RISCV_GCC_OPTS = -static -std=gnu99 -g -Os -ffast-math -fno-common -fno-builtin-printf -fno-builtin-memcpy -mcmodel=medany -I$(DRIVER_DIR) -I$(BASE_DIR)
 RISCV_DUMP_OPTS = -D -S -l
 RISCV_LINK = $(RISCV_PREFIX)gcc -T $(DRIVER_DIR)/test.ld
 RISCV_LINK_OPTS = -nostdlib -nostartfiles -ffast-math -Xlinker -M=mapfile
@@ -65,7 +65,7 @@ dump: $(DUMP_FILES)
 
 $(RISCV_FILES): %.riscv:$(BASE_DIR)/%.c $(HEADERS) $(DRIVER_OBJS) crt.o $(DRIVER_DIR)/test.ld
 	$(RISCV_LINK) $(RISCV_GCC_OPTS) $(RISCV_LINK_OPTS) -o $@ $< $(DRIVER_OBJS) crt.o
-	riscv64-unknown-elf-objdump -d $@ > $*.dis
+	riscv64-unknown-elf-objdump -d -S -l $@ > $*.dis
 
 $(HEX_FILES): %.hex:%.riscv
 	riscv64-unknown-elf-objcopy -I elf64-little -O verilog $< cnvmem.mem
@@ -80,12 +80,12 @@ $(DUMP_FILES): %.dump:%.riscv
 .PHONY: all dump
 junk += $(RISCV_FILES) $(HEX_FILES) $(DUMP_FILES)
 
-U = lib/strto.c  lib/time.c  lib/div64.c  lib/ctype.c   drivers/block/blk_legacy.c  drivers/mmc/lowrisc_mmc.c  drivers/mmc/mmc_legacy.c \
-drivers/mmc/mmc.c lib/string.c  lib/display_options.c ../driver/mini-printf.c ../driver/hid.c ../driver/syscalls.c boot.c ../driver/ff.c \
+U = lib/strto.c  lib/time.c  lib/div64.c  lib/ctype.c \
+lib/string.c  lib/display_options.c ../driver/mini-printf.c ../driver/hid.c ../driver/syscalls.c boot.c ../driver/ff.c \
 ../driver/memory.c ../driver/sdhci-minion-hash-md5.c ../driver/elf.c ../driver/ethlib.c ../driver/dhcp-client.c ../driver/random.c \
 # ../driver/minion_helper.c
 
-MMC = blk_legacy.o crt.o ctype.o display_options.o div64.o elf.o ff.o hid.o lowrisc_mmc.o memory.o mini-printf.o mmc_legacy.o mmc.o sdhci-minion-hash-md5.o string.o strto.o syscalls.o time.o ethlib.o dhcp-client.o random.o
+MMC = crt.o ctype.o display_options.o div64.o elf.o ff.o hid.o memory.o mini-printf.o sdhci-minion-hash-md5.o string.o strto.o syscalls.o time.o ethlib.o dhcp-client.o random.o
 
 boot: $U
 	riscv64-unknown-elf-gcc -c -o crt.o ../driver/crt.S
