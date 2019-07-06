@@ -227,6 +227,7 @@ void init_plic(void)
 
 void _init(int cid, int nc)
 {
+  int sw;
   uint32_t macaddr_lo, macaddr_hi;
   extern int main(int, char **);
   extern char _bss[], _end[];
@@ -239,12 +240,13 @@ void _init(int cid, int nc)
   thread_entry(cid, nc);
   */
   hid_init((void*)vga_base_addr);
+  sw = sd_base[31];
   mac_addr.addr[0] = (uint8_t)0xEE;
   mac_addr.addr[1] = (uint8_t)0xE1;
   mac_addr.addr[2] = (uint8_t)0xE2;
   mac_addr.addr[3] = (uint8_t)0xE3;
   mac_addr.addr[4] = (uint8_t)0xE4;
-  mac_addr.addr[5] = (uint8_t)0xE5;
+  mac_addr.addr[5] = (uint8_t)(0xE0|(sw >> 12));
 
   memcpy (&macaddr_lo, mac_addr.addr+2, sizeof(uint32_t));
   memcpy (&macaddr_hi, mac_addr.addr+0, sizeof(uint16_t));

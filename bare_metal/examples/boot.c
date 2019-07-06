@@ -105,8 +105,10 @@ int just_jump (void)
 
 int main (void)
 {
-  int i, sw = 2;
+  int i, sw = sd_base[31];
 
+  printf("SW=%x\n", sw);
+  
   loopback_test(8, (sw & 0xF) == 0xF);
   
   printf("lowRISC boot program\n=====================================\n");
